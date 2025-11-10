@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: logdb_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: logdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123!
+    ports:
+      - "5432:5432"
+    volumes:
+      # Your init.sql will run automatically on first container start
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: ./app
+    container_name: logdb_app
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/logdb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123!
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+    ports:
+      - "8080:8080"
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: logdb_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@logdb.com
+      PGADMIN_DEFAULT_PASSWORD: admin123!
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+      - ./pgadmin/pgpass:/pgpass
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  pgadmin_data:
