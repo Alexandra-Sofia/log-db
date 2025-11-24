@@ -1,0 +1,41 @@
+<h1>Parsing Completed</h1>
+
+<ul>
+    <li>Access logs parsed: {{ counts.access }}</li>
+    <li>DataXceiver logs parsed: {{ counts.dataxceiver }}</li>
+    <li>NameSystem logs parsed: {{ counts.namesystem }}</li>
+</ul>
+
+<a href="/">Back</a>
+<h2>Log Processing</h2>
+
+{% if error %}
+    <p style="color:red;">{{ error }}</p>
+{% endif %}
+
+<!-- PARSE BUTTON -->
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="parse">Parse Logs</button>
+</form>
+
+<br>
+
+<!-- PARSE RESULTS -->
+{% if stats %}
+    <h3>Parse Results</h3>
+    <p>Access logs: {{ stats.access }}</p>
+    <p>DataXceiver logs: {{ stats.dataxceiver }}</p>
+    <p>Namesystem logs: {{ stats.namesystem }}</p>
+
+    <!-- UPLOAD BUTTON -->
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="upload">Upload to Database</button>
+    </form>
+{% endif %}
+
+<!-- UPLOAD RESULT -->
+{% if uploaded %}
+    <h3 style="color:green;">Upload Completed!</h3>
+{% endif %}
