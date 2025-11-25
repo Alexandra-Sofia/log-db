@@ -109,7 +109,7 @@ def insert_log_entries(conn, rows):
             entry_batch.append((
                 log_type_id,
                 action_id,
-                row.get("timestamp"),
+                row.get("log_timestamp"),
                 row.get("source_ip"),
                 row.get("dest_ip"),
                 row.get("block_id"),
@@ -168,7 +168,7 @@ def flush_entry_batch(conn, cur, entry_batch, detail_batch):
 
     except Exception as exc:
         logger.error("Failed to insert log_entry batch.", exc_info=True)
-        raise
+        raise exc
 
     # --------------------------------------------------------
     # Insert detail rows (ACCESS logs only)
