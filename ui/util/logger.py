@@ -2,34 +2,47 @@ import logging
 import os
 
 
-def setup_logger(name: str = None, log_file: str = 'logfile.log') -> logging.Logger:
-    """
-    Sets up a logger that outputs messages to both the console and a log file.
-    Always overwrites the log file.
+def setup_logger(
+    name: str = None,
+    log_file: str = "logfile.log",
+    verbose: bool = False,
+) -> logging.Logger:
+    """Sets up a logger that outputs messages to both the console and a log file.
 
-    :param name: Optional name for the logger. If None, the root logger will be used.
-    :param log_file: Path to the log file. Default is 'logfile.log'.
-    :return: A configured logging.Logger instance.
+    This logger can be named or use the root logger if no name is provided.
+    Handlers are only added once to prevent duplicate messages. If `verbose`
+    is True, DEBUG messages are shown and filename/line info is included.
+
+    Args:
+        name (str, optional): Name of the logger. If None, the root logger is used.
+        log_file (str, optional): Path to the log file. Default is 'logfile.log'.
+        verbose (bool, optional): If True, sets level to DEBUG
+        and includes filename and line number.
+
+    Returns:
+        logging.Logger: Configured logger instance with console and file handlers.
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    if logger.handlers:
+        return logger
+
+    if verbose:
+        fmt = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+    else:
+        fmt = "%(asctime)s - %(levelname)s - %(message)s"
 
     # Console handler setup
     console_handler = logging.StreamHandler()
-    console_formatter = logging.Formatter('%(name)s %(asctime)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(console_formatter)
+    console_handler.setFormatter(logging.Formatter(fmt))
     logger.addHandler(console_handler)
 
-    # Ensure the .input-logfiles directory exists
-    os.makedirs(".input-logfiles", exist_ok=True)
-
-    # Create the full path for the log file
-    log_file_path = os.path.join(".input-logfiles", log_file)
-
-    # File handler setup to overwrite the log file
-    file_handler = logging.FileHandler(log_file_path, mode='w')  # 'w' mode overwrites the file
-    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(file_formatter)
+    # File handler setup
+    os.makedirs(".logs", exist_ok=True)
+    file_handler = logging.FileHandler(os.path.join(".logs", log_file), mode="w")
+    file_handler.setFormatter(logging.Formatter(fmt))
     logger.addHandler(file_handler)
 
     return logger

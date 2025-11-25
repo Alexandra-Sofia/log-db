@@ -395,14 +395,8 @@ def run_parser(logdir: str = "./input-logfiles") -> Dict[str, List[Dict[str, Any
     logger.info("--------------------------------------------------------->")
     logger.info(os.getcwd())
     return {
-        "access": parse_access(os.path.join(logdir, "access_log_full")),
-        "dataxceiver": parse_dataxceiver(os.path.join(logdir, "HDFS_DataXceiver.log")),
-        "namesystem": parse_namesystem(os.path.join(logdir, "HDFS_FS_Namesystem.log")),
+        "ACCESS": parse_access(os.path.join(logdir, "access_log_full")),
+        "HDFS_DATAXCEIVER": parse_dataxceiver(os.path.join(logdir, "HDFS_DataXceiver.log")),
+        "HDFS_NAMESYSTEM": parse_namesystem(os.path.join(logdir, "HDFS_FS_Namesystem.log")),
     }
 
-if __name__ == "__main__":
-    data = run_parser("./input-logfiles")
-
-    logger.info(f"ACCESS: {len(data['access'])}")
-    logger.info(f"DATAX: {len(data['dataxceiver'])}")
-    logger.info(f"NAMESYS: {len(data['namesystem'])}")

@@ -1,12 +1,3 @@
-<h1>Parsing Completed</h1>
-
-<ul>
-    <li>Access logs parsed: {{ counts.access }}</li>
-    <li>DataXceiver logs parsed: {{ counts.dataxceiver }}</li>
-    <li>NameSystem logs parsed: {{ counts.namesystem }}</li>
-</ul>
-
-<a href="/">Back</a>
 <h2>Log Processing</h2>
 
 {% if error %}
@@ -27,7 +18,7 @@
     <p>Access logs: {{ stats.access }}</p>
     <p>DataXceiver logs: {{ stats.dataxceiver }}</p>
     <p>Namesystem logs: {{ stats.namesystem }}</p>
-
+    <a href="/">Back</a>
     <!-- UPLOAD BUTTON -->
     <form method="post">
         {% csrf_token %}

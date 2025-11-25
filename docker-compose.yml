@@ -14,21 +14,21 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: logdb_pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@logdb.com
-      PGADMIN_DEFAULT_PASSWORD: admin123!
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./pgadmin/servers.json:/pgadmin4/servers.json
-      - ./pgadmin/pgpass:/pgpass
-    depends_on:
-      - postgres
+#  pgadmin:
+#    image: dpage/pgadmin4
+#    container_name: logdb_pgadmin
+#    restart: always
+#    environment:
+#      PGADMIN_DEFAULT_EMAIL: admin@logdb.com
+#      PGADMIN_DEFAULT_PASSWORD: admin123!
+#    ports:
+#      - "5050:80"
+#    volumes:
+#      - pgadmin_data:/var/lib/pgadmin
+#      - ./pgadmin/servers.json:/pgadmin4/servers.json
+#      - ./pgadmin/pgpass:/pgpass
+#    depends_on:
+#      - postgres
 
   django:
     build:
@@ -54,4 +54,4 @@ services:
 
 volumes:
   pgdata:
-  pgadmin_data:
+#  pgadmin_data:
