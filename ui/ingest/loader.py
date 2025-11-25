@@ -1,112 +1,111 @@
-import psycopg
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
+import psycopg2
+from psycopg2.extras import execute_values
+
 from ..util.logger import logger
 
-BATCH_SIZE = 50000
+BATCH_SIZE = 5000
 
 
 # ------------------------------------------------------------
-# Helpers
+# Helpers to work with small dimension tables
 # ------------------------------------------------------------
 def get_log_type_ids(conn) -> Dict[str, int]:
     """
-    Fetch all log types from the database.
-    Return a mapping: {"ACCESS": 1, "HDFS_DATAXCEIVER": 2, ...}
+    Load all log_type rows and return a mapping name -> id.
     """
-    logger.info("Fetching log_type IDs from database…")
+    logger.info("Fetching log_type IDs from database...")
+    mapping: Dict[str, int] = {}
 
-    out = {}
     with conn.cursor() as cur:
-        cur.execute("SELECT id, name FROM log_type")
-        rows = cur.fetchall()
-        for row in rows:
-            out[row[1]] = row[0]
+        cur.execute("SELECT id, name FROM log_type;")
+        for id_, name in cur.fetchall():
+            mapping[name.upper()] = id_
 
-    logger.info(f"Loaded {len(out)} log types: {out}")
-    return out
+    logger.info(f"Loaded {len(mapping)} log types: {mapping}")
+    return mapping
 
 
-def get_action_type_id(conn, name: str) -> int:
+def get_action_type_id(conn, name: str | None) -> int | None:
     """
-    Resolve an action_type ID.
-    Auto-create the action_type if it does not exist.
+    Ensure an action_type row exists for the given name, returning its id.
+    If name is None or empty, returns None.
     """
+    if not name:
+        return None
+
     with conn.cursor() as cur:
-        logger.debug(f"Resolving action_type for: {name}")
+        cur.execute("SELECT id FROM action_type WHERE name = %s;", (name,))
+        row = cur.fetchone()
+        if row:
+            return row[0]
 
-        cur.execute("SELECT id FROM action_type WHERE name = %s", (name,))
-        r = cur.fetchone()
-        if r:
-            return r[0]
-
-        logger.info(f"action_type '{name}' not found. Creating new entry…")
         cur.execute(
-            "INSERT INTO action_type (name) VALUES (%s) RETURNING id",
-            (name,)
+            "INSERT INTO action_type (name) VALUES (%s) RETURNING id;",
+            (name,),
         )
         new_id = cur.fetchone()[0]
-        logger.info(f"Created new action_type '{name}' with id {new_id}")
-        conn.commit()
+        logger.info(f"Created new action_type: {name} -> id {new_id}")
         return new_id
 
 
 # ------------------------------------------------------------
-# Main ingestion entrypoint
+# Top-level ingestion entry point
 # ------------------------------------------------------------
-def insert_logs(conn, parsed: Dict[str, List[Dict[str, Any]]]):
+def insert_logs(conn, parsed: Dict[str, List[Dict[str, Any]]]) -> None:
     """
-    Insert parsed logs into PostgreSQL.
+    Insert all parsed logs into the database.
 
-    parsed = {
-        "access": [...],
-        "dataxceiver": [...],
-        "namesystem": [...]
-    }
+    parsed keys are expected to be:
+      'ACCESS', 'HDFS_DATAXCEIVER', 'HDFS_NAMESYSTEM'
+
+    Each value is a list of dict rows produced by your parser.
     """
-
-    logger.info("Beginning log ingestion process…")
+    logger.info("Beginning log ingestion process...")
+    logger.info(f"Parsed log types present: {list(parsed.keys())}")
 
     log_type_ids = get_log_type_ids(conn)
 
-    # Flatten everything
-    all_rows = []
-    for log_type_name, rows in parsed.items():
-        logger.info(f"Preparing {len(rows)} rows for type '{log_type_name}'…")
+    # Use transaction: commit once after all inserts
+    with conn:
+        with conn.cursor() as cur:
+            total_rows = 0
 
-        lt_id = log_type_ids[log_type_name]
-        for row in rows:
-            all_rows.append((log_type_name, lt_id, row))
-        break
+            for key, rows in parsed.items():
+                lt_name = key.upper()
+                if lt_name not in log_type_ids:
+                    logger.warning(f"Skipping unknown log_type {lt_name}.")
+                    continue
 
-    logger.info(f"Total combined rows prepared for insertion: {len(all_rows)}")
+                lt_id = log_type_ids[lt_name]
+                logger.info(f"Preparing {len(rows)} rows for type '{lt_name}'...")
 
-    # Insert all logs
-    insert_log_entries(conn, all_rows)
+                inserted_for_type = _insert_for_log_type(conn, cur, lt_id, rows)
+                total_rows += inserted_for_type
+                logger.info(f"Inserted {inserted_for_type} rows for '{lt_name}'.")
 
-    logger.info("Ingestion process completed successfully.")
+            logger.info(f"FINAL: total inserted into log_entry = {total_rows}")
 
 
 # ------------------------------------------------------------
-# Insert log_entry + detail rows
+# Per-type ingestion with batching
 # ------------------------------------------------------------
-def insert_log_entries(conn, rows):
+def _insert_for_log_type(conn, cur, log_type_id: int, rows: List[Dict[str, Any]]) -> int:
     """
-    Insert log entries in batches.
+    Insert all rows of a specific log type in batches.
     """
-    logger.info("Starting batched insertion into log_entry…")
+    entry_batch: List[Tuple[Any, ...]] = []
+    detail_staging: List[Tuple[int, Dict[str, Any]]] = []
+    inserted_count = 0
 
-    entry_batch = []
-    detail_batch = []
+    for row in rows:
+        action_name = row.get("action")
+        action_id = get_action_type_id(conn, action_name)
 
-    with conn.cursor() as cur:
-        for idx, (log_type_name, log_type_id, row) in enumerate(rows, 1):
+        idx = len(entry_batch)
 
-            # --- Resolve action type
-            action = row.get("action")
-            action_id = get_action_type_id(conn, action) if action else None
-
-            # --- Prepare the base log_entry row
-            entry_batch.append((
+        entry_batch.append(
+            (
                 log_type_id,
                 action_id,
                 row.get("log_timestamp"),
@@ -117,99 +116,99 @@ def insert_log_entries(conn, rows):
                 row.get("file_name"),
                 row.get("line_number"),
                 row.get("raw_message"),
-            ))
-
-            # --- Access log extra detail
-            detail = row.get("detail")
-            if detail:
-                detail_batch.append((idx, detail))
-
-            # --- BATCH FLUSH
-            if len(entry_batch) >= BATCH_SIZE:
-                logger.info(f"Batch size reached ({BATCH_SIZE}). Flushing batch…")
-                flush_entry_batch(conn, cur, entry_batch, detail_batch)
-                entry_batch.clear()
-                detail_batch.clear()
-
-        # Final flush
-        if entry_batch:
-            logger.info(f"Final batch flush: {len(entry_batch)} rows remaining.")
-            flush_entry_batch(conn, cur, entry_batch, detail_batch)
-
-    logger.info("All batches inserted.")
-
-
-# ------------------------------------------------------------
-# Actual batch insertion into DB
-# ------------------------------------------------------------
-def flush_entry_batch(conn, cur, entry_batch, detail_batch):
-    """
-    Insert a batch of log_entry rows, then their related log_access_detail rows.
-    """
-    logger.info(f"Inserting {len(entry_batch)} rows into log_entry…")
-
-    try:
-        cur.executemany(
-            """
-            INSERT INTO log_entry (
-                log_type_id, action_type_id, log_timestamp,
-                source_ip, dest_ip,
-                block_id, size_bytes,
-                file_name, line_number,
-                raw_message
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            RETURNING id
-            """,
-            entry_batch
+            )
         )
 
-        entry_ids = [row[0] for row in cur.fetchall()]
-        logger.info(f"Inserted {len(entry_ids)} log_entry rows successfully.")
+        if row.get("detail"):
+            detail_staging.append((idx, row["detail"]))
 
-    except Exception as exc:
-        logger.error("Failed to insert log_entry batch.", exc_info=True)
-        raise exc
+        if len(entry_batch) >= BATCH_SIZE:
+            inserted = _flush_entry_batch(cur, entry_batch, detail_staging)
+            inserted_count += inserted
+            entry_batch.clear()
+            detail_staging.clear()
 
-    # --------------------------------------------------------
-    # Insert detail rows (ACCESS logs only)
-    # --------------------------------------------------------
-    if detail_batch:
-        logger.info(f"Preparing to insert {len(detail_batch)} access detail rows…")
+    # final flush
+    if entry_batch:
+        inserted = _flush_entry_batch(cur, entry_batch, detail_staging)
+        inserted_count += inserted
 
-        detail_rows = []
-        for entry_id, (_, detail) in zip(entry_ids, detail_batch):
-            detail_rows.append((
-                entry_id,
-                detail.get("remote_name"),
-                detail.get("auth_user"),
-                detail.get("http_method"),
-                detail.get("resource"),
-                detail.get("http_status"),
-                detail.get("referrer"),
-                detail.get("user_agent"),
-            ))
+    return inserted_count
 
-        try:
-            cur.executemany(
-                """
-                INSERT INTO log_access_detail (
-                    log_entry_id,
-                    remote_name, auth_user,
-                    http_method, resource, http_status,
-                    referrer, user_agent
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                detail_rows
+
+# ------------------------------------------------------------
+# Flush batch using psycopg2.extras.execute_values
+# ------------------------------------------------------------
+def _flush_entry_batch(cur, entry_batch, detail_staging) -> int:
+    """
+    Insert a batch of log_entry rows and the matching log_access_detail rows.
+    """
+    if not entry_batch:
+        return 0
+
+    logger.info(f"Flushing batch of {len(entry_batch)} rows...")
+
+    entry_sql = """
+        INSERT INTO log_entry (
+            log_type_id,
+            action_type_id,
+            log_timestamp,
+            source_ip,
+            dest_ip,
+            block_id,
+            size_bytes,
+            file_name,
+            line_number,
+            raw_message
+        )
+        VALUES %s
+        RETURNING id;
+    """
+
+    try:
+        returned = execute_values(cur, entry_sql, entry_batch, fetch=True)
+        entry_ids = [r[0] for r in returned]
+    except Exception as e:
+        logger.error("Failed to insert log_entry batch.")
+        logger.exception(e)
+        raise
+
+    logger.info(f"Inserted {len(entry_ids)} log_entry rows.")
+
+    if detail_staging:
+        logger.info(f"Inserting {len(detail_staging)} ACCESS detail rows...")
+
+        detail_vals = []
+        for idx, detail in detail_staging:
+            detail_vals.append(
+                (
+                    entry_ids[idx],
+                    detail.get("remote_name"),
+                    detail.get("auth_user"),
+                    detail.get("http_method"),
+                    detail.get("resource"),
+                    detail.get("http_status"),
+                    detail.get("referrer"),
+                    detail.get("user_agent"),
+                )
             )
-            logger.info(f"Inserted {len(detail_rows)} access_detail rows.")
 
-        except Exception:
-            logger.error("Failed to insert access detail batch.", exc_info=True)
-            raise
+        detail_sql = """
+            INSERT INTO log_access_detail (
+                log_entry_id,
+                remote_name,
+                auth_user,
+                http_method,
+                resource,
+                http_status,
+                referrer,
+                user_agent
+            )
+            VALUES %s;
+        """
 
-    # --------------------------------------------------------
-    # Commit after each batch
-    # --------------------------------------------------------
-    logger.info("Committing batch to database…")
-    conn.commit()
-    logger.info("Batch committed successfully.")
+        execute_values(cur, detail_sql, detail_vals)
+
+        logger.info("ACCESS detail insertion complete.")
+
+    return len(entry_ids)

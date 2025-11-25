@@ -1,4 +1,4 @@
-import psycopg
+import psycopg2
 
 from django.shortcuts import render
 from .parsers.parser_runner import run_parser
@@ -37,14 +37,14 @@ def parse_and_upload(request):
             context["error"] = "No parsed data found. Please parse first."
         else:
             try:
-                conn = psycopg.connect(
+                conn = psycopg2.connect(
                     dbname="logdb",
                     user="admin",
                     password="admin123!",
                     host="postgres",
                     port=5432,
                 )
-                logger.info(f"DB connection was successful!")
+                logger.info("DB connection was successful!")
                 insert_logs(conn, PARSED_CACHE)
                 conn.close()
                 context["uploaded"] = True
