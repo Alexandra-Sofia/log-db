@@ -2,7 +2,7 @@ import psycopg
 from typing import Dict, List, Any
 from ..util.logger import logger
 
-BATCH_SIZE = 5000
+BATCH_SIZE = 50000
 
 
 # ------------------------------------------------------------
@@ -76,6 +76,7 @@ def insert_logs(conn, parsed: Dict[str, List[Dict[str, Any]]]):
         lt_id = log_type_ids[log_type_name]
         for row in rows:
             all_rows.append((log_type_name, lt_id, row))
+        break
 
     logger.info(f"Total combined rows prepared for insertion: {len(all_rows)}")
 
@@ -108,7 +109,7 @@ def insert_log_entries(conn, rows):
             entry_batch.append((
                 log_type_id,
                 action_id,
-                row["timestamp"],
+                row.get("timestamp"),
                 row.get("source_ip"),
                 row.get("dest_ip"),
                 row.get("block_id"),

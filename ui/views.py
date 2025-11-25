@@ -19,6 +19,7 @@ def parse_and_upload(request):
     if request.method == "POST" and "parse" in request.POST:
         try:
             parsed = run_parser("./input-logfiles")
+            logger.info(f"parsed: {parsed.keys()}")
             PARSED_CACHE = parsed
             context["stats"] = {
                 "ACCESS": len(parsed["ACCESS"]),

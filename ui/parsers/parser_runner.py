@@ -6,6 +6,30 @@ from typing import Callable, Dict, List, Optional, Any
 
 from ..util.logger import logger
 
+import csv
+
+def write_rows_to_csv(path: str, rows: list) -> str | None:
+    """
+    Write parsed rows to a CSV file.
+    Returns the output file path if successful, otherwise None.
+    """
+    if not rows:
+        return None
+
+    os.makedirs(".parsed", exist_ok=True)
+
+    out_name = os.path.basename(path) + ".csv"
+    out_path = os.path.join(".parsed", out_name)
+
+    fieldnames = list(rows[0].keys())
+
+    with open(out_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return out_path
+
 
 def ts_apache(s: str) -> datetime:
     """
@@ -123,6 +147,14 @@ def parse_file(
                 )
 
     logger.info(f"[parse_file] Finished {path}: matched {matched}/{total}")
+
+    # Write CSV
+    outfile = write_rows_to_csv(path, rows)
+    if outfile:
+        logger.info(f"[parse_file] Saved {len(rows)} rows to {outfile}")
+    else:
+        logger.info(f"[parse_file] No rows matched, CSV not created.")
+
     return rows
 
 
@@ -361,6 +393,13 @@ def parse_namesystem(path: str) -> List[Dict[str, Any]]:
                     )
 
     logger.info(f"[parse_namesystem] Finished {path}: matched {matched}/{total}")
+    outfile = write_rows_to_csv(path, rows)
+
+    if outfile is not None:
+        logger.info(f"[parse_file] Saved {len(rows)} rows to {outfile}")
+    else:
+        logger.info(f"[parse_file] No rows matched, CSV not created.")
+
     return rows
 
 
@@ -398,5 +437,7 @@ def run_parser(logdir: str = "./input-logfiles") -> Dict[str, List[Dict[str, Any
         "ACCESS": parse_access(os.path.join(logdir, "access_log_full")),
         "HDFS_DATAXCEIVER": parse_dataxceiver(os.path.join(logdir, "HDFS_DataXceiver.log")),
         "HDFS_NAMESYSTEM": parse_namesystem(os.path.join(logdir, "HDFS_FS_Namesystem.log")),
+        # "HDFS_DATAXCEIVER": {},
+        # "HDFS_NAMESYSTEM": {},
     }
 
