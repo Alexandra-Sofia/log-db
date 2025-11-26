@@ -25,21 +25,19 @@ CREATE TABLE IF NOT EXISTS action_type (
 -- ===========================================
 -- This table mirrors what the parser writes to CSV.
 
-CREATE TABLE IF NOT EXISTS log_entry_staging (
-    id              BIGSERIAL PRIMARY KEY,
+DROP TABLE IF EXISTS log_entry_staging;
 
-    log_type_name   TEXT NOT NULL,
-    action_type_name TEXT,
-    log_timestamp   TIMESTAMPTZ NOT NULL,
-
-    source_ip       INET,
-    dest_ip         INET,
-
-    block_id        BIGINT,
-    size_bytes      BIGINT,
-
-    detail          JSONB
+CREATE TABLE log_entry_staging (
+    log_type_name     TEXT,
+    action_type_name  TEXT,
+    log_timestamp     TEXT,
+    source_ip         TEXT,
+    dest_ip           TEXT,
+    block_id          TEXT,
+    size_bytes        TEXT,
+    detail            TEXT
 );
+
 
 
 -- ===========================================
