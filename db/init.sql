@@ -3,12 +3,6 @@ CREATE TABLE IF NOT EXISTS log_type (
     name    TEXT        UNIQUE NOT NULL
 );
 
-INSERT INTO log_type (name) VALUES
-    ('ACCESS'),
-    ('HDFS_DATAXCEIVER'),
-    ('HDFS_NAMESYSTEM')
-ON CONFLICT (name) DO NOTHING;
-
 CREATE TABLE IF NOT EXISTS action_type (
     id      SMALLSERIAL PRIMARY KEY,
     name    TEXT        UNIQUE NOT NULL
