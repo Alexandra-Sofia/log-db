@@ -35,12 +35,7 @@ CREATE TABLE log_entry (
     dest_ip         INET,
 
     block_id        BIGINT,
-    size_bytes      BIGINT,
-
-    file_name       TEXT,
-    line_number     INTEGER,
-
-    raw_message     TEXT NOT NULL
+    size_bytes      BIGINT
 );
 
 -- Indexes for performance

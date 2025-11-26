@@ -3,10 +3,10 @@ import re
 import os
 from datetime import datetime
 from typing import Callable, Dict, List, Optional, Any
+import csv
 
 from ..util.logger import logger
 
-import csv
 
 def write_rows_to_csv(path: str, rows: list) -> str | None:
     """
@@ -61,9 +61,6 @@ def make_row(
     dest_ip: Optional[str],
     block_id: Optional[int],
     size_bytes: Optional[int],
-    file_name: str,
-    line_number: int,
-    raw_message: str,
     detail: Optional[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
@@ -76,9 +73,6 @@ def make_row(
     :param dest_ip: Destination IP address if present.
     :param block_id: Block identifier if present.
     :param size_bytes: Size field if present.
-    :param file_name: Name of the log file.
-    :param line_number: Line number within the log file.
-    :param raw_message: Original raw log line.
     :param detail: Additional attributes for ACCESS input-logfiles.
     :return: Dictionary aligned with the target schema.
     """
@@ -90,17 +84,15 @@ def make_row(
         "dest_ip": dest_ip,
         "block_id": block_id,
         "size_bytes": size_bytes,
-        "file_name": file_name,
-        "line_number": line_number,
-        "raw_message": raw_message,
         "detail": detail
     }
+
 
 
 def parse_file(
     path: str,
     regex: re.Pattern,
-    row_builder: Callable[[Dict[str, str], datetime], Any]
+    row_builder: Callable[[Dict[str, str], int], List[Dict[str, Any]]]
 ) -> List[Dict[str, Any]]:
     """
     Parse a text file with verbose logging for debugging regex mismatches.
@@ -111,7 +103,7 @@ def parse_file(
     :return: List of parsed and normalized rows.
     """
     logger.info(f"[parse_file] Starting: {path}")
-    rows: List[Dict[str, Any]] = []
+    rows = []
     total = 0
     matched = 0
 
@@ -126,10 +118,9 @@ def parse_file(
 
             matched += 1
             g = m.groupdict()
+            built_rows = row_builder(g, line_no)
 
-            entry_list = row_builder(g, line_no)
-
-            for row in entry_list:
+            for row in built_rows:
                 rows.append(
                     make_row(
                         log_type_name=row["log_type_name"],
@@ -139,21 +130,15 @@ def parse_file(
                         dest_ip=row["dest_ip"],
                         block_id=row["block_id"],
                         size_bytes=row["size_bytes"],
-                        file_name=path,
-                        line_number=line_no,
-                        raw_message=raw,
                         detail=row["detail"]
                     )
                 )
 
     logger.info(f"[parse_file] Finished {path}: matched {matched}/{total}")
 
-    # Write CSV
     outfile = write_rows_to_csv(path, rows)
     if outfile:
         logger.info(f"[parse_file] Saved {len(rows)} rows to {outfile}")
-    else:
-        logger.info(f"[parse_file] No rows matched, CSV not created.")
 
     return rows
 
@@ -200,15 +185,35 @@ def build_access(g: Dict[str, str], _: int) -> List[Dict[str, Any]]:
 
 
 DATAX_REGEX = re.compile(
-    r'^(?P<date>\d{6})\s+'
-    r'(?P<time>\d{6})\s+'
-    r'\d+\s+INFO\s+dfs\.DataNode\$DataXceiver:\s+'
-    r'(?:(?P<prefix_ip>[\d\.]+):\d+\s+)?'
-    r'(?P<op>Receiving|Received|Served)\s+block\s+blk_(?P<block>-?\d+)'
-    r'(?:\s+src:\s*/(?P<src_ip>[\d\.]+):\d+)?'
-    r'(?:\s+dest:\s*/(?P<dest_ip>[\d\.]+):\d+)?'
-    r'(?:\s+to\s+/(?P<to_ip>[\d\.]+))?'
-    r'(?:\s+of\s+size\s+(?P<size>\d+))?'
+    r'''
+    ^
+    (?P<date>\d{6})\s+
+    (?P<time>\d{6})\s+
+    (?P<tid>\d+)\s+
+    INFO\s+dfs\.DataNode\$DataXceiver:\s+
+
+    (?:
+        (?P<op_receiving>Receiving)\s+block\s+
+        (?P<blk_receiving>blk_[0-9\-]+)
+        \s+src:\s+/(?P<src_receiving>[0-9.]+):\d+
+        \s+dest:\s+/(?P<dst_receiving>[0-9.]+):\d+
+        |
+
+        (?P<op_received>Received)\s+block\s+
+        (?P<blk_received>blk_[0-9\-]+)
+        .*?src:\s+/(?P<src_received>[0-9.]+):\d+
+        \s+dest:\s+/(?P<dst_received>[0-9.]+):\d+
+        (?:.*?size\s+(?P<size_received>\d+))?
+        |
+
+        (?P<src_served>[0-9.]+):\d+\s+
+        (?P<op_served>Served)\s+block\s+
+        (?P<blk_served>blk_[0-9\-]+)
+        \s+to\s+/(?P<dst_served>[0-9.]+)
+    )
+    $
+    ''',
+    re.VERBOSE
 )
 
 
@@ -222,42 +227,82 @@ def build_datax(g: Dict[str, str], _: int) -> List[Dict[str, Any]]:
     """
     timestamp = ts_hdfs_compact(g["date"], g["time"])
 
-    return [{
-        "log_type_name": "HDFS_DATAXCEIVER",
-        "action_type_name": g["op"].lower(),
-        "timestamp": timestamp,
-        "source_ip": g["src_ip"],
-        "dest_ip": g["dest_ip"],
-        "block_id": int(g["block"]),
-        "size_bytes": None,
-        "detail": None
-    }]
+    if g.get("op_receiving"):
+        return [{
+            "log_type_name": "HDFS_DATAXCEIVER",
+            "action_type_name": "receiving",
+            "timestamp": timestamp,
+            "source_ip": g["src_receiving"],
+            "dest_ip": g["dst_receiving"],
+            "block_id": int(g["blk_receiving"][4:]),
+            "size_bytes": None,
+            "detail": None
+        }]
 
+    if g.get("op_received"):
+        size = int(g["size_received"]) if g.get("size_received") else None
+        return [{
+            "log_type_name": "HDFS_DATAXCEIVER",
+            "action_type_name": "received",
+            "timestamp": timestamp,
+            "source_ip": g["src_received"],
+            "dest_ip": g["dst_received"],
+            "block_id": int(g["blk_received"][4:]),
+            "size_bytes": size,
+            "detail": None
+        }]
 
-# ============================
-# HDFS NameSystem parsing
-# ============================
+    if g.get("op_served"):
+        return [{
+            "log_type_name": "HDFS_DATAXCEIVER",
+            "action_type_name": "served",
+            "timestamp": timestamp,
+            "source_ip": g["src_served"],
+            "dest_ip": g["dst_served"],
+            "block_id": int(g["blk_served"][4:]),
+            "size_bytes": None,
+            "detail": None
+        }]
+
+    return []
+
 
 NAMESYS_UPDATE_REGEX = re.compile(
-    r'^(?P<date>\d{6})\s+'
-    r'(?P<time>\d{6})\s+'
-    r'\d+\s+INFO\s+dfs\.FSNamesystem:\s+BLOCK\*\s+'
-    r'NameSystem\.(?P<op>\w+):\s+'
-    r'blockMap updated:\s+(?P<ip>[\d\.]+):\d+.*?'
-    r'blk_(?P<block>-?\d+)'
-    r'(?:\s+size\s+(?P<size>\d+))?'
+    r'''
+    ^
+    (?P<date>\d{6})\s+
+    (?P<time>\d{6})\s+
+    (?P<tid>\d+)\s+
+    INFO\s+dfs\.FSNamesystem:\s+BLOCK\*\s+
+    NameSystem\.\w+:\s+
+    blockMap\s+updated:\s+
+    (?P<ip>[0-9.]+):\d+.*?
+    blk_(?P<block>-?\d+)
+    (?:\s+size\s+(?P<size>\d+))?
+    $
+    ''',
+    re.VERBOSE
 )
 
 NAMESYS_ASK_REPLICATE_REGEX = re.compile(
-    r'^(?P<date>\d{6})\s+'
-    r'(?P<time>\d{6})\s+'
-    r'\d+\s+INFO\s+dfs\.FSNamesystem:\s+BLOCK\*\s+'
-    r'ask\s+(?P<src_ip>[\d\.]+):\d+\s+to\s+replicate\s+'
-    r'blk_(?P<block>-?\d+)\s+to\s+datanode\(s\)\s+(?P<dest_list>.+)$'
+    r'''
+    ^
+    (?P<date>\d{6})\s+
+    (?P<time>\d{6})\s+
+    (?P<tid>\d+)\s+
+    INFO\s+dfs\.FSNamesystem:\s+BLOCK\*\s+
+    ask\s+(?P<src_ip>[0-9.]+):\d+
+    \s+to\s+replicate\s+
+    blk_(?P<block>-?\d+)
+    \s+to\s+datanode\(s\)\s+
+    (?P<dest_list>(?:[0-9.]+:\d+\s*)+)
+    $
+    ''',
+    re.VERBOSE
 )
 
 
-def build_namesystem_update(g: Dict[str, str], line_no: int) -> List[Dict[str, Any]]:
+def build_namesystem_update(g: Dict[str, str], _: int) -> List[Dict[str, Any]]:
     """
     Build structured rows for NameSystem update-like events.
 
@@ -283,7 +328,7 @@ def build_namesystem_update(g: Dict[str, str], line_no: int) -> List[Dict[str, A
     }]
 
 
-def build_namesystem_replicate(g: Dict[str, str], line_no: int) -> List[Dict[str, Any]]:
+def build_namesystem_replicate(g: Dict[str, str], _: int) -> List[Dict[str, Any]]:
     """
     Build structured rows for NameSystem replication requests.
 
@@ -298,22 +343,18 @@ def build_namesystem_replicate(g: Dict[str, str], line_no: int) -> List[Dict[str
     :return: List of replicate rows, one per destination IP.
     """
     timestamp = ts_hdfs_compact(g["date"], g["time"])
-    src_ip = g["src_ip"]
     block_id = int(g["block"])
-    dest_list_raw = g["dest_list"].strip()
+    src_ip = g["src_ip"]
 
-    rows: List[Dict[str, Any]] = []
-
-    for token in dest_list_raw.split():
-        if ":" not in token:
-            continue
-        dest_ip = token.split(":", 1)[0]
+    rows = []
+    for token in g["dest_list"].split():
+        ip = token.split(":")[0]
         rows.append({
             "log_type_name": "HDFS_NAMESYSTEM",
             "action_type_name": "replicate",
             "timestamp": timestamp,
             "source_ip": src_ip,
-            "dest_ip": dest_ip,
+            "dest_ip": ip,
             "block_id": block_id,
             "size_bytes": None,
             "detail": None
@@ -339,7 +380,7 @@ def parse_namesystem(path: str) -> List[Dict[str, Any]]:
     :return: List of structured rows ready for database insertion.
     """
     logger.info(f"[parse_namesystem] Starting: {path}")
-    rows: List[Dict[str, Any]] = []
+    rows = []
     total = 0
     matched = 0
 
@@ -348,11 +389,9 @@ def parse_namesystem(path: str) -> List[Dict[str, Any]]:
             total += 1
             clean = raw.rstrip("\n")
 
-            m_update = NAMESYS_UPDATE_REGEX.match(clean)
-            if m_update:
-                built = build_namesystem_update(m_update.groupdict(), line_no)
-                matched += 1
-                for r in built:
+            m_upd = NAMESYS_UPDATE_REGEX.match(clean)
+            if m_upd:
+                for r in build_namesystem_update(m_upd.groupdict(), line_no):
                     rows.append(
                         make_row(
                             log_type_name=r["log_type_name"],
@@ -362,19 +401,15 @@ def parse_namesystem(path: str) -> List[Dict[str, Any]]:
                             dest_ip=r["dest_ip"],
                             block_id=r["block_id"],
                             size_bytes=r["size_bytes"],
-                            file_name=path,
-                            line_number=line_no,
-                            raw_message=raw,
                             detail=r["detail"]
                         )
                     )
+                matched += 1
                 continue
 
-            m_repl = NAMESYS_ASK_REPLICATE_REGEX.match(clean)
-            if m_repl:
-                built = build_namesystem_replicate(m_repl.groupdict(), line_no)
-                if built:
-                    matched += 1
+            m_rep = NAMESYS_ASK_REPLICATE_REGEX.match(clean)
+            if m_rep:
+                built = build_namesystem_replicate(m_rep.groupdict(), line_no)
                 for r in built:
                     rows.append(
                         make_row(
@@ -385,20 +420,16 @@ def parse_namesystem(path: str) -> List[Dict[str, Any]]:
                             dest_ip=r["dest_ip"],
                             block_id=r["block_id"],
                             size_bytes=r["size_bytes"],
-                            file_name=path,
-                            line_number=line_no,
-                            raw_message=raw,
                             detail=r["detail"]
                         )
                     )
+                matched += 1
 
     logger.info(f"[parse_namesystem] Finished {path}: matched {matched}/{total}")
-    outfile = write_rows_to_csv(path, rows)
 
-    if outfile is not None:
-        logger.info(f"[parse_file] Saved {len(rows)} rows to {outfile}")
-    else:
-        logger.info(f"[parse_file] No rows matched, CSV not created.")
+    outfile = write_rows_to_csv(path, rows)
+    if outfile:
+        logger.info(f"[parse_namesystem] Saved {len(rows)} rows to {outfile}")
 
     return rows
 
@@ -435,9 +466,6 @@ def run_parser(logdir: str = "./input-logfiles") -> Dict[str, List[Dict[str, Any
     logger.info(os.getcwd())
     return {
         "ACCESS": parse_access(os.path.join(logdir, "access_log_full")),
-        # "HDFS_DATAXCEIVER": parse_dataxceiver(os.path.join(logdir, "HDFS_DataXceiver.log")),
-        # "HDFS_NAMESYSTEM": parse_namesystem(os.path.join(logdir, "HDFS_FS_Namesystem.log")),
-        "HDFS_DATAXCEIVER": {},
-        "HDFS_NAMESYSTEM": {},
+        "HDFS_DATAXCEIVER": parse_dataxceiver(os.path.join(logdir, "HDFS_DataXceiver.log")),
+        "HDFS_NAMESYSTEM": parse_namesystem(os.path.join(logdir, "HDFS_FS_Namesystem.log")),
     }
-

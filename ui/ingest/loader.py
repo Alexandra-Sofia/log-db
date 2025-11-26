@@ -47,6 +47,7 @@ def get_action_type_id(conn, name: str | None) -> int | None:
         new_id = cur.fetchone()[0]
         logger.info(f"Created new action_type: {name} -> id {new_id}")
         return new_id
+    return None
 
 
 # ------------------------------------------------------------
@@ -66,7 +67,6 @@ def insert_logs(conn, parsed: Dict[str, List[Dict[str, Any]]]) -> None:
 
     log_type_ids = get_log_type_ids(conn)
 
-    # Use transaction: commit once after all inserts
     with conn:
         with conn.cursor() as cur:
             total_rows = 0
@@ -99,11 +99,12 @@ def _insert_for_log_type(conn, cur, log_type_id: int, rows: List[Dict[str, Any]]
     inserted_count = 0
 
     for row in rows:
-        action_name = row.get("action")
+        action_name = row.get("action_type_name")
         action_id = get_action_type_id(conn, action_name)
 
         idx = len(entry_batch)
 
+        # NEW entry tuple — matches updated schema
         entry_batch.append(
             (
                 log_type_id,
@@ -113,9 +114,6 @@ def _insert_for_log_type(conn, cur, log_type_id: int, rows: List[Dict[str, Any]]
                 row.get("dest_ip"),
                 row.get("block_id"),
                 row.get("size_bytes"),
-                row.get("file_name"),
-                row.get("line_number"),
-                row.get("raw_message"),
             )
         )
 
@@ -156,10 +154,7 @@ def _flush_entry_batch(cur, entry_batch, detail_staging) -> int:
             source_ip,
             dest_ip,
             block_id,
-            size_bytes,
-            file_name,
-            line_number,
-            raw_message
+            size_bytes
         )
         VALUES %s
         RETURNING id;
@@ -208,7 +203,6 @@ def _flush_entry_batch(cur, entry_batch, detail_staging) -> int:
         """
 
         execute_values(cur, detail_sql, detail_vals)
-
         logger.info("ACCESS detail insertion complete.")
 
     return len(entry_ids)
