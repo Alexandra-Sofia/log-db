@@ -14,11 +14,22 @@ services:
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
+    command:
+      - "postgres"
+      - "-c"
+      - "max_wal_size=8GB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "checkpoint_timeout=15min"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U admin -d logdb" ]
       interval: 2s
       timeout: 3s
       retries: 10
+
 
   ingest:
     build:
@@ -37,16 +48,17 @@ services:
       - ./input-logfiles:/input-logfiles:ro
       - ./parsed:/parsed
     command: >
-      bash -c "
-        echo 'DEBUG: Starting entrypoint...' &&
-        ls -l /app &&
+      bash -c '
+        ts() { date "+%Y-%m-%d %H:%M:%S.%3N"; }
+
+        echo "$(ts) | DEBUG: Starting ingest step deployment." &&
         ./wait_for_postgres.sh &&
-        echo 'DEBUG: Postgres ready' &&
+        echo "$(ts) | DEBUG: Postgres ready" &&
         python parse_to_csv.py &&
-        echo 'DEBUG: CSV done' &&
+        echo "$(ts) | DEBUG: CSV done" &&
         python load_with_copy.py &&
-        echo 'DEBUG: DONE'
-      "
+        echo "$(ts) | DEBUG: DONE"
+      '
   
   
 
@@ -70,10 +82,14 @@ services:
     ports:
       - "8000:8000"
     command: >
-      bash -c "
+      bash -c '
+        ts() { date "+%Y-%m-%d %H:%M:%S.%3N"; }
+
+        echo "$(ts) | Starting migrations…" &&
         python manage.py migrate &&
+        echo "$(ts) | Starting Django server…" &&
         python manage.py runserver 0.0.0.0:8000
-      "
+      '
 
 volumes:
   pgdata:

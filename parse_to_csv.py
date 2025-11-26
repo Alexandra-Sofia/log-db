@@ -3,24 +3,22 @@
 Parse raw log files into a single CSV suitable for COPY into PostgreSQL.
 
 The output file is: ./parsed/log_entry.csv
-
-Columns:
-    log_type_name
-    action_type_name
-    log_timestamp
-    source_ip
-    dest_ip
-    block_id
-    size_bytes
-    detail  (JSON string with type-specific attributes for ACCESS logs)
 """
 
 import os
 import re
 import csv
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Iterable, Optional, List
+
+# ----------------------------
+# Logging helper
+# ----------------------------
+
+def log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    print(f"{ts} | {msg}", flush=True)
 
 
 # ----------------------------
@@ -28,16 +26,10 @@ from typing import Dict, Any, Iterable, Optional, List
 # ----------------------------
 
 def ts_apache(s: str) -> datetime:
-    """
-    Parse an Apache-style timestamp, e.g. '10/Oct/2000:13:55:36 -0700'.
-    """
     return datetime.strptime(s, "%d/%b/%Y:%H:%M:%S %z")
 
 
 def ts_hdfs_compact(date: str, time: str) -> datetime:
-    """
-    Parse a compact HDFS timestamp composed of YYMMDD and HHMMSS.
-    """
     return datetime.strptime(date + time, "%y%m%d%H%M%S")
 
 
@@ -56,14 +48,17 @@ ACCESS_REGEX = re.compile(
 
 
 def parse_access(path: str) -> Iterable[Dict[str, Any]]:
-    """
-    Parse Apache access log lines and yield normalized rows.
-    """
+    log(f"Parsing ACCESS log: {path}")
+    total = 0
+    matched = 0
+
     with open(path, encoding="utf-8") as f:
         for raw in f:
+            total += 1
             m = ACCESS_REGEX.match(raw.rstrip("\n"))
             if not m:
                 continue
+            matched += 1
             g = m.groupdict()
             size = None if g["size"] == "-" else int(g["size"])
             ts = ts_apache(g["timestamp"])
@@ -89,6 +84,8 @@ def parse_access(path: str) -> Iterable[Dict[str, Any]]:
                 "detail": json.dumps(detail, ensure_ascii=False),
             }
 
+    log(f"ACCESS parsing done: matched {matched}/{total}")
+
 
 # ----------------------------
 # HDFS DataXceiver parsing
@@ -103,14 +100,12 @@ DATAX_REGEX = re.compile(
     INFO\s+dfs\.DataNode\$DataXceiver:\s+
 
     (?:
-        # RECEIVING
         (?P<op_receiving>Receiving)\s+block\s+
         (?P<blk_receiving>blk_[0-9\-]+)
         \s+src:\s+/(?P<src_receiving>[0-9.]+):\d+
         \s+dest:\s+/(?P<dst_receiving>[0-9.]+):\d+
         |
 
-        # RECEIVED (may include size)
         (?P<op_received>Received)\s+block\s+
         (?P<blk_received>blk_[0-9\-]+)
         .*?src:\s+/(?P<src_received>[0-9.]+):\d+
@@ -118,7 +113,6 @@ DATAX_REGEX = re.compile(
         (?:.*?size\s+(?P<size_received>\d+))?
         |
 
-        # SERVED
         (?P<src_served>[0-9.]+):\d+\s+
         (?P<op_served>Served)\s+block\s+
         (?P<blk_served>blk_[0-9\-]+)
@@ -131,15 +125,18 @@ DATAX_REGEX = re.compile(
 
 
 def parse_dataxceiver(path: str) -> Iterable[Dict[str, Any]]:
-    """
-    Parse HDFS DataXceiver log lines and yield normalized rows.
-    """
+    log(f"Parsing HDFS_DataXceiver log: {path}")
+    total = 0
+    matched = 0
+
     with open(path, encoding="utf-8") as f:
         for raw in f:
+            total += 1
             line = raw.rstrip("\n")
             m = DATAX_REGEX.match(line)
             if not m:
                 continue
+            matched += 1
             g = m.groupdict()
             ts = ts_hdfs_compact(g["date"], g["time"])
 
@@ -154,7 +151,7 @@ def parse_dataxceiver(path: str) -> Iterable[Dict[str, Any]]:
                     "dest_ip": g["dst_receiving"],
                     "block_id": block_id,
                     "size_bytes": "",
-                    "detail": json.dumps({}, ensure_ascii=False),
+                    "detail": "{}",
                 }
                 continue
 
@@ -171,7 +168,7 @@ def parse_dataxceiver(path: str) -> Iterable[Dict[str, Any]]:
                     "dest_ip": g["dst_received"],
                     "block_id": block_id,
                     "size_bytes": size_val,
-                    "detail": json.dumps({}, ensure_ascii=False),
+                    "detail": "{}",
                 }
                 continue
 
@@ -186,13 +183,15 @@ def parse_dataxceiver(path: str) -> Iterable[Dict[str, Any]]:
                     "dest_ip": g["dst_served"],
                     "block_id": block_id,
                     "size_bytes": "",
-                    "detail": json.dumps({}, ensure_ascii=False),
+                    "detail": "{}",
                 }
                 continue
 
+    log(f"HDFS_DataXceiver parsing done: matched {matched}/{total}")
+
 
 # ----------------------------
-# HDFS FSNamesystem parsing
+# Namesystem parsing
 # ----------------------------
 
 NAMESYS_UPDATE_REGEX = re.compile(
@@ -231,17 +230,18 @@ NAMESYS_ASK_REPLICATE_REGEX = re.compile(
 
 
 def parse_namesystem(path: str) -> Iterable[Dict[str, Any]]:
-    """
-    Parse FSNamesystem log lines and yield normalized rows for:
-    - update (blockMap updated)
-    - replicate (ask <ip> to replicate ...)
-    """
+    log(f"Parsing HDFS_FSNamesystem log: {path}")
+    total = 0
+    matched = 0
+
     with open(path, encoding="utf-8") as f:
         for raw in f:
+            total += 1
             line = raw.rstrip("\n")
 
             m_upd = NAMESYS_UPDATE_REGEX.match(line)
             if m_upd:
+                matched += 1
                 g = m_upd.groupdict()
                 ts = ts_hdfs_compact(g["date"], g["time"])
                 size_val = int(g["size"]) if g.get("size") else ""
@@ -253,7 +253,7 @@ def parse_namesystem(path: str) -> Iterable[Dict[str, Any]]:
                     "dest_ip": g["ip"],
                     "block_id": int(g["block"]),
                     "size_bytes": size_val,
-                    "detail": json.dumps({}, ensure_ascii=False),
+                    "detail": "{}",
                 }
                 continue
 
@@ -264,10 +264,11 @@ def parse_namesystem(path: str) -> Iterable[Dict[str, Any]]:
                 src_ip = g["src_ip"]
                 block_id = int(g["block"])
 
-                for token in g["dest_list"].split():
-                    if ":" not in token:
+                for tok in g["dest_list"].split():
+                    if ":" not in tok:
                         continue
-                    dest_ip = token.split(":", 1)[0]
+                    matched += 1
+                    dest_ip = tok.split(":", 1)[0]
                     yield {
                         "log_type_name": "HDFS_NAMESYSTEM",
                         "action_type_name": "replicate",
@@ -276,17 +277,21 @@ def parse_namesystem(path: str) -> Iterable[Dict[str, Any]]:
                         "dest_ip": dest_ip,
                         "block_id": block_id,
                         "size_bytes": "",
-                        "detail": json.dumps({}, ensure_ascii=False),
+                        "detail": "{}",
                     }
+
+    log(f"HDFS_FSNamesystem parsing done: matched {matched}/{total}")
 
 
 # ----------------------------
-# Driver: write all to CSV
+# Driver
 # ----------------------------
 
 def main(logdir: str = "/input-logfiles", outdir: str = "./parsed") -> None:
     os.makedirs(outdir, exist_ok=True)
     out_path = os.path.join(outdir, "log_entry.csv")
+
+    log(f"Writing CSV to: {out_path}")
 
     fieldnames = [
         "log_type_name",
@@ -318,7 +323,7 @@ def main(logdir: str = "/input-logfiles", outdir: str = "./parsed") -> None:
         for row in parse_namesystem(namesys_path):
             writer.writerow(row)
 
-    print(f"Wrote CSV: {out_path}")
+    log(f"CSV created successfully: {out_path}")
 
 
 if __name__ == "__main__":

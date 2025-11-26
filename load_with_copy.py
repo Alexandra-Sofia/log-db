@@ -16,20 +16,26 @@ Input CSV:
 import os
 import psycopg
 
+from datetime import datetime, timezone
+
 CSV_PATH = "./parsed/log_entry.csv"
+
+def log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    print(f"{ts} | {msg}", flush=True)
 
 
 # ======================================================
 # COPY into staging (TEXT columns)
 # ======================================================
 def copy_into_staging(conn) -> None:
-    print("== COPY INTO STAGING ==")
+    log("== COPY INTO STAGING ==")
 
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(f"CSV not found: {CSV_PATH}")
 
     with conn.cursor() as cur:
-        print("Truncating staging table...")
+        log("Truncating staging table...")
         cur.execute("TRUNCATE TABLE log_entry_staging;")
         conn.commit()
 
@@ -47,20 +53,20 @@ def copy_into_staging(conn) -> None:
         FROM STDIN WITH (FORMAT csv, HEADER true)
     """
 
-    print("Copying CSV into staging...")
+    log("Copying CSV into staging...")
     with conn.cursor() as cur, open(CSV_PATH, "r", encoding="utf-8") as f:
         with cur.copy(copy_sql) as copy:
             copy.write(f.read())
 
     conn.commit()
-    print("COPY completed.\n")
+    log("COPY completed.\n")
 
 
 # ======================================================
 # Insert missing action types
 # ======================================================
 def populate_action_types(conn) -> None:
-    print("== POPULATE action_type ==")
+    log("== POPULATE action_type ==")
 
     with conn.cursor() as cur:
         cur.execute(
@@ -75,14 +81,14 @@ def populate_action_types(conn) -> None:
         )
     conn.commit()
 
-    print("action_type mapped.\n")
+    log("action_type mapped.\n")
 
 
 # ======================================================
 # Move data from staging → final table
 # ======================================================
 def move_from_staging_to_final(conn) -> int:
-    print("== INSERT INTO log_entry ==")
+    log("== INSERT INTO log_entry ==")
 
     with conn.cursor() as cur:
         cur.execute(
@@ -142,7 +148,7 @@ def move_from_staging_to_final(conn) -> int:
         inserted = cur.rowcount
 
     conn.commit()
-    print(f"Inserted {inserted} rows.\n")
+    log(f"Inserted {inserted} rows.\n")
     return inserted
 
 
@@ -150,7 +156,7 @@ def move_from_staging_to_final(conn) -> int:
 # Main
 # ======================================================
 def main() -> None:
-    print("Connecting to PostgreSQL...")
+    log("Connecting to PostgreSQL...")
 
     conn = psycopg.connect(
         dbname=os.getenv("PGDATABASE", "logdb"),
@@ -165,8 +171,8 @@ def main() -> None:
         populate_action_types(conn)
         inserted = move_from_staging_to_final(conn)
 
-        print("== DONE ==")
-        print(f"Final rows inserted: {inserted}")
+        log("== DONE ==")
+        log(f"Final rows inserted: {inserted}")
 
     finally:
         conn.close()
