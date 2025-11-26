@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS action_type (
 -- -------------------------
 
 CREATE TABLE IF NOT EXISTS log_entry (
-    id              BIGSERIAL PRIMARY KEY,
+    id              TEXT PRIMARY KEY,
 
     log_type_id     SMALLINT NOT NULL,
     action_type_id  SMALLINT,
@@ -79,7 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_log_entry_block_ts
 -- -------------------------
 
 CREATE TABLE IF NOT EXISTS log_access_detail (
-    log_entry_id BIGINT PRIMARY KEY,
+    log_entry_id TEXT PRIMARY KEY,
 
     remote_name  TEXT,
     auth_user    TEXT,
