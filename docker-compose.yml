@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:15
@@ -12,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
     command:
       - "postgres"
@@ -33,8 +31,8 @@ services:
 
   ingest:
     build:
-      context: .
-      dockerfile: Dockerfile.ingest
+      context: ./ingest
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,17 +48,12 @@ services:
     command: >
       bash -c '
         ts() { date "+%Y-%m-%d %H:%M:%S.%3N"; }
-
-        echo "$(ts) | DEBUG: Starting ingest step deployment." &&
+        echo "$(ts) | Ingest step deployment: START." &&
         ./wait_for_postgres.sh &&
-        echo "$(ts) | DEBUG: Postgres ready" &&
-        python parse_to_csv.py &&
-        echo "$(ts) | DEBUG: CSV done" &&
-        python load_with_copy.py &&
-        echo "$(ts) | DEBUG: DONE"
+        python execute.py &&
+        echo "$(ts) | Ingest step deployment: END."
       '
-  
-  
+ 
 
   django:
     build:

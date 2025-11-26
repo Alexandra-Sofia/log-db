@@ -76,7 +76,7 @@ WSGI_APPLICATION = 'logdb_web.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django.postgres.backends.postgresql",
         "NAME": "logdb",
         "USER": "admin",
         "PASSWORD": "admin123!",
@@ -126,4 +126,4 @@ STATIC_URL = 'static/'
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = 'django.postgres.models.BigAutoField'
