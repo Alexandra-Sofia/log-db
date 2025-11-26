@@ -1,3 +1,4 @@
+version: '3.9'
 
 services:
   postgres:
@@ -13,45 +14,66 @@ services:
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d logdb" ]
+      interval: 2s
+      timeout: 3s
+      retries: 10
 
-#  pgadmin:
-#    image: dpage/pgadmin4
-#    container_name: logdb_pgadmin
-#    restart: always
-#    environment:
-#      PGADMIN_DEFAULT_EMAIL: admin@logdb.com
-#      PGADMIN_DEFAULT_PASSWORD: admin123!
-#    ports:
-#      - "5050:80"
-#    volumes:
-#      - pgadmin_data:/var/lib/pgadmin
-#      - ./pgadmin/servers.json:/pgadmin4/servers.json
-#      - ./pgadmin/pgpass:/pgpass
-#    depends_on:
-#      - postgres
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: admin
+      PGPASSWORD: admin123!
+      PGDATABASE: logdb
+    volumes:
+      - ./input-logfiles:/input-logfiles:ro
+      - ./parsed:/parsed
+    command: >
+      bash -c "
+        echo 'DEBUG: Starting entrypoint...' &&
+        ls -l /app &&
+        ./wait_for_postgres.sh &&
+        echo 'DEBUG: Postgres ready' &&
+        python parse_to_csv.py &&
+        echo 'DEBUG: CSV done' &&
+        python load_with_copy.py &&
+        echo 'DEBUG: DONE'
+      "
+  
+  
 
   django:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: logdb_django
-    restart: unless-stopped
-    working_dir: /app
-    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: admin
+      PGPASSWORD: admin123!
+      PGDATABASE: logdb
     volumes:
-      - ./:/app                # Sync your entire local repo to /app in the container
+      - .:/app
     ports:
       - "8000:8000"
-    environment:
-      DJANGO_SETTINGS_MODULE: logdb_web.settings   # IMPORTANT
-      POSTGRES_DB: logdb
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin123!
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-    depends_on:
-      - postgres
+    command: >
+      bash -c "
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
 
 volumes:
   pgdata:
-#  pgadmin_data:

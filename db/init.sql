@@ -1,8 +1,8 @@
 -- ===========================================
---  Base lookup tables
+-- Base lookup tables
 -- ===========================================
 
-CREATE TABLE log_type (
+CREATE TABLE IF NOT EXISTS log_type (
     id      SMALLSERIAL PRIMARY KEY,
     name    TEXT UNIQUE NOT NULL
 );
@@ -10,20 +10,43 @@ CREATE TABLE log_type (
 INSERT INTO log_type (name) VALUES
     ('ACCESS'),
     ('HDFS_DATAXCEIVER'),
-    ('HDFS_NAMESYSTEM');
+    ('HDFS_NAMESYSTEM')
+ON CONFLICT (name) DO NOTHING;
 
 
-CREATE TABLE action_type (
+CREATE TABLE IF NOT EXISTS action_type (
     id      SMALLSERIAL PRIMARY KEY,
     name    TEXT UNIQUE NOT NULL
 );
 
 
 -- ===========================================
---  Main unified table for ALL log entries
+-- Staging table for COPY-based ingestion
+-- ===========================================
+-- This table mirrors what the parser writes to CSV.
+
+CREATE TABLE IF NOT EXISTS log_entry_staging (
+    id              BIGSERIAL PRIMARY KEY,
+
+    log_type_name   TEXT NOT NULL,
+    action_type_name TEXT,
+    log_timestamp   TIMESTAMPTZ NOT NULL,
+
+    source_ip       INET,
+    dest_ip         INET,
+
+    block_id        BIGINT,
+    size_bytes      BIGINT,
+
+    detail          JSONB
+);
+
+
+-- ===========================================
+-- Final unified table for ALL log entries
 -- ===========================================
 
-CREATE TABLE log_entry (
+CREATE TABLE IF NOT EXISTS log_entry (
     id              BIGSERIAL PRIMARY KEY,
 
     log_type_id     SMALLINT NOT NULL REFERENCES log_type(id),
@@ -35,44 +58,26 @@ CREATE TABLE log_entry (
     dest_ip         INET,
 
     block_id        BIGINT,
-    size_bytes      BIGINT
+    size_bytes      BIGINT,
+
+    detail          JSONB
 );
 
 -- Indexes for performance
-CREATE INDEX idx_log_entry_timestamp      ON log_entry (log_timestamp);
-CREATE INDEX idx_log_entry_log_type       ON log_entry (log_type_id);
-CREATE INDEX idx_log_entry_action_type    ON log_entry (action_type_id);
-CREATE INDEX idx_log_entry_source_ip      ON log_entry (source_ip);
-CREATE INDEX idx_log_entry_dest_ip        ON log_entry (dest_ip);
-CREATE INDEX idx_log_entry_block_id       ON log_entry (block_id);
+CREATE INDEX IF NOT EXISTS idx_log_entry_timestamp      ON log_entry (log_timestamp);
+CREATE INDEX IF NOT EXISTS idx_log_entry_log_type       ON log_entry (log_type_id);
+CREATE INDEX IF NOT EXISTS idx_log_entry_action_type    ON log_entry (action_type_id);
+CREATE INDEX IF NOT EXISTS idx_log_entry_source_ip      ON log_entry (source_ip);
+CREATE INDEX IF NOT EXISTS idx_log_entry_dest_ip        ON log_entry (dest_ip);
+CREATE INDEX IF NOT EXISTS idx_log_entry_block_id       ON log_entry (block_id);
+CREATE INDEX IF NOT EXISTS idx_log_entry_detail_gin     ON log_entry USING GIN (detail);
 
 
 -- ===========================================
---  Access-log-only details (1-to-1)
+-- Application-level users (unchanged from before)
 -- ===========================================
 
-CREATE TABLE log_access_detail (
-    log_entry_id    BIGINT PRIMARY KEY REFERENCES log_entry(id) ON DELETE CASCADE,
-
-    remote_name     TEXT,
-    auth_user       TEXT,
-    http_method     TEXT,
-    resource        TEXT,
-    http_status     INTEGER,
-    referrer        TEXT,
-    user_agent      TEXT
-);
-
-CREATE INDEX idx_access_http_status ON log_access_detail (http_status);
-CREATE INDEX idx_access_method      ON log_access_detail (http_method);
-CREATE INDEX idx_access_resource    ON log_access_detail (resource);
-
-
--- ===========================================
---  Application-level users
--- ===========================================
-
-CREATE TABLE app_user (
+CREATE TABLE IF NOT EXISTS app_user (
     id          BIGSERIAL PRIMARY KEY,
     name        TEXT NOT NULL,
     login_name  TEXT UNIQUE NOT NULL,
@@ -81,11 +86,11 @@ CREATE TABLE app_user (
     email       TEXT UNIQUE NOT NULL
 );
 
-CREATE TABLE user_query_log (
+CREATE TABLE IF NOT EXISTS user_query_log (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES app_user(id),
     query_text  TEXT NOT NULL,
     executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_query_log_user ON user_query_log (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_query_log_user ON user_query_log (user_id);
