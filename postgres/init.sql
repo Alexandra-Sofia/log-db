@@ -1,11 +1,3 @@
--- ============================================================
--- LOGDB OPTIMIZED SCHEMA
--- ============================================================
-
--- -------------------------
--- Lookup tables
--- -------------------------
-
 CREATE TABLE IF NOT EXISTS log_type (
     id      SMALLSERIAL PRIMARY KEY,
     name    TEXT UNIQUE NOT NULL
@@ -17,16 +9,10 @@ INSERT INTO log_type (name) VALUES
     ('HDFS_NAMESYSTEM')
 ON CONFLICT (name) DO NOTHING;
 
-
 CREATE TABLE IF NOT EXISTS action_type (
     id      SMALLSERIAL PRIMARY KEY,
     name    TEXT UNIQUE NOT NULL
 );
-
-
--- -------------------------
--- Staging table (COPY target)
--- -------------------------
 
 DROP TABLE IF EXISTS log_entry_staging;
 
@@ -41,45 +27,26 @@ CREATE TABLE log_entry_staging (
     detail            TEXT
 );
 
-
--- -------------------------
--- Main unified log table
--- -------------------------
-
 CREATE TABLE IF NOT EXISTS log_entry (
     id              BIGSERIAL PRIMARY KEY,
-
     log_type_id     SMALLINT NOT NULL REFERENCES log_type(id),
     action_type_id  SMALLINT REFERENCES action_type(id),
-
     log_timestamp   TIMESTAMPTZ NOT NULL,
-
     source_ip       INET,
     dest_ip         INET,
-
     block_id        BIGINT,
-    size_bytes      BIGINT,
-
-    detail          JSONB   -- Only for HDFS logs
+    size_bytes      BIGINT
 );
 
--- Indexes
 CREATE INDEX IF NOT EXISTS idx_log_entry_timestamp   ON log_entry (log_timestamp);
 CREATE INDEX IF NOT EXISTS idx_log_entry_log_type    ON log_entry (log_type_id);
 CREATE INDEX IF NOT EXISTS idx_log_entry_action_type ON log_entry (action_type_id);
 CREATE INDEX IF NOT EXISTS idx_log_entry_source_ip   ON log_entry (source_ip);
 CREATE INDEX IF NOT EXISTS idx_log_entry_dest_ip     ON log_entry (dest_ip);
 CREATE INDEX IF NOT EXISTS idx_log_entry_block_id    ON log_entry (block_id);
-CREATE INDEX IF NOT EXISTS idx_log_entry_detail      ON log_entry USING GIN (detail);
-
-
--- -------------------------
--- ACCESS DETAIL TABLE (NEW)
--- -------------------------
 
 CREATE TABLE IF NOT EXISTS log_access_detail (
     log_entry_id BIGINT PRIMARY KEY REFERENCES log_entry(id),
-
     remote_name  TEXT,
     auth_user    TEXT,
     http_method  TEXT,
@@ -89,15 +56,10 @@ CREATE TABLE IF NOT EXISTS log_access_detail (
     user_agent   TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_access_resource ON log_access_detail (resource);
-CREATE INDEX IF NOT EXISTS idx_access_status   ON log_access_detail (http_status);
-CREATE INDEX IF NOT EXISTS idx_access_method   ON log_access_detail (http_method);
-CREATE INDEX IF NOT EXISTS idx_access_useragent ON log_access_detail (user_agent);
-
-
--- -------------------------
--- App users (unchanged)
--- -------------------------
+CREATE INDEX IF NOT EXISTS idx_access_resource   ON log_access_detail (resource);
+CREATE INDEX IF NOT EXISTS idx_access_status     ON log_access_detail (http_status);
+CREATE INDEX IF NOT EXISTS idx_access_method     ON log_access_detail (http_method);
+CREATE INDEX IF NOT EXISTS idx_access_useragent  ON log_access_detail (user_agent);
 
 CREATE TABLE IF NOT EXISTS app_user (
     id          BIGSERIAL PRIMARY KEY,
