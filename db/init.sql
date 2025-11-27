@@ -7,7 +7,7 @@
 -- -------------------------
 
 CREATE TABLE IF NOT EXISTS log_type (
-    id      SMALLSERIAL PRIMARY KEY,
+    id      SMALLSERIAL PRIMARY KEY NOT NULL,
     name    TEXT UNIQUE NOT NULL
 );
 
@@ -19,7 +19,7 @@ ON CONFLICT (name) DO NOTHING;
 
 
 CREATE TABLE IF NOT EXISTS action_type (
-    id      UUID PRIMARY KEY,
+    id      UUID PRIMARY KEY NOT NULL,
     name    TEXT UNIQUE NOT NULL
 );
 
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS action_type (
 -- -------------------------
 
 CREATE TABLE IF NOT EXISTS log_entry (
-    id              TEXT PRIMARY KEY,
+    id              TEXT PRIMARY KEY NOT NULL,
 
     log_type_id     SMALLINT NOT NULL,
     action_type_id  UUID,
