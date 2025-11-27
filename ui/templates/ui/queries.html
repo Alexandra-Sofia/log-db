@@ -1,0 +1,351 @@
+{% extends "./base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center"> 
+    
+    <div class="col-lg-8 col-md-10"> 
+        
+        <form id="query-form" method="POST" action="/askQuery" novalidate>
+            {% csrf_token %} 
+            
+            <div class="d-flex align-items-center mb-4 p-3 bg-light rounded-3 shadow-sm">
+                <div class="row g-3">
+                    <label for="query-selector" class="form-label me-3 mb-0 text-muted fw-bold">Select a Query:</label> 
+                    <div class="col-md-12">
+                        <select id="query-selector" name="query" 
+                            class="form-select" 
+                            required>
+                            <option value="" selected>-- Choose an option --</option> 
+                            {% for key, query in queries.items %}
+                            <option value="{{key}}">{{key}} {{query.title}}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback">Please select a query</div>    
+                    </div>
+                </div>
+            </div>
+            
+            <div id="dynamic-params-wrapper">
+                <div class="row g-3">
+                    
+                    <div id="timeRange_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3 ">
+                        <h5>Time Range Parameters</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="timeRange-start" class="form-label">From Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="timeRange-start" 
+                                    name="start_time"
+                                    data-param-type="timeRange">
+                                <div class="invalid-feedback">Please provide the starting date and time.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="timeRange-end" class="form-label">To Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="timeRange-end" 
+                                    name="end_time"
+                                    data-param-type="timeRange">
+                                <div class="invalid-feedback">Please provide the ending date and time.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="actionType_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Action Type Parameter</h5>
+                        
+                        <label for="actionType-select" class="form-label">Action Type</label>
+                        <select class="form-select" 
+                                id="actionType-select" 
+                                name="action_type" 
+                                data-param-type="actionType">
+                            <option value="" selected>-- Select an Action Type --</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="CONNECT">CONNECT</option>
+                            <option value="HEAD">HEAD</option>
+                            <option value="PUT">PUT</option>
+                            <option value="OPTIONS">OPTIONS</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="TRACE">TRACE</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="receiving">receiving</option>
+                            <option value="received">received</option>
+                            <option value="served">served</option>
+                            <option value="update">update</option>
+                            
+                        </select>
+                        
+                        <div class="invalid-feedback">A specific action type is required for this query.</div>
+                    </div>
+                    
+                    <div id="day_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Single Day Parameter</h5>
+                        <label for="day-input" class="form-label">Select Day</label>
+                        <input type="date" 
+                            class="form-control" 
+                            id="day-input" 
+                            name="single_day"
+                            data-param-type="day">
+                        <div class="invalid-feedback">Please select a single day.</div>
+                    </div>
+
+                    <div id="dayRange_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Day Range Parameters</h5>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="dayRange-start" class="form-label">From Date</label>
+                                <input type="date" 
+                                    class="form-control" 
+                                    id="dayRange-start" 
+                                    name="start_day"
+                                    data-param-type="dayRange">
+                                <div class="invalid-feedback">Please select the starting date.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="dayRange-end" class="form-label">To Date</label>
+                                <input type="date" 
+                                    class="form-control" 
+                                    id="dayRange-end" 
+                                    name="end_day"
+                                    data-param-type="dayRange">
+                                <div class="invalid-feedback">Please select the ending date.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="block_id_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Block ID Parameter</h5>
+                        <label for="block_id-input" class="form-label">Block ID</label>
+                        <input type="number" 
+                            class="form-control" 
+                            id="block_id-input" 
+                            name="block_id"
+                            placeholder="e.g., 501"
+                            data-param-type="block_id">
+                        <div class="invalid-feedback">
+                            A numeric Block ID is required.
+                        </div>
+                    </div>
+
+                    <div id="size_bytes_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Size (Bytes) Parameter</h5>
+                        <label for="size_bytes-input" class="form-label">Minimum Size (Bytes)</label>
+                        <input type="number" 
+                            class="form-control" 
+                            id="size_bytes-input" 
+                            name="size_bytes"
+                            placeholder="e.g., 1024"
+                            data-param-type="size_bytes">
+                        <div class="invalid-feedback">
+                            A minimum size in bytes (number) is required.
+                        </div>
+                    </div>
+
+                    <div id="timestamp_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Specific Timestamp</h5>
+                        <label for="timestamp-input" class="form-label">Specific Date & Time</label>
+                        <input type="datetime-local" 
+                            class="form-control" 
+                            id="timestamp-input" 
+                            name="specific_timestamp"
+                            data-param-type="timestamp">
+                        <div class="invalid-feedback">
+                            Please select a specific date and time for the query.
+                        </div>
+                    </div>
+                    <div id="log_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Log Type Parameter</h5>
+                        <label for="log_type-select" class="form-label">Log Type</label>
+                        <select class="form-select" 
+                                id="log_type-select"
+                                name="log_type" 
+                                data-param-type="log_type">
+
+                            <option value="" selected>-- Select a Log Type --</option>
+                            <option value="ACCESS">ACCESS</option>
+                            <option value="HDFS_DATAXCEIVER">HDFS_DATAXCEIVER</option>
+                            <option value="HDFS_NAMESYSTEM">HDFS_NAMESYSTEM</option>
+                            <option value="KERNEL">KERNEL</option>
+                            <option value="SYSTEM">SYSTEM</option>
+                        </select>
+                        <div class="invalid-feedback">A specific log type string is required.</div>
+                    </div>
+
+                    <div id="source_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Source IP Address</h5>
+                        <label for="source_ip-input" class="form-label">Source IP</label>
+                        <input type="text" 
+                            class="form-control" 
+                            id="source_ip-input" 
+                            name="source_ip"
+                            placeholder="e.g., 192.168.1.10"
+                            data-param-type="source_ip">
+                        <div class="invalid-feedback">
+                            A valid source IP address is required.
+                        </div>
+                    </div>
+
+                    <div id="destination_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <h5>Destination IP Address</h5>
+                        <label for="destination_ip-input" class="form-label">Destination IP</label>
+                        <input type="text" 
+                            class="form-control" 
+                            id="destination_ip-input" 
+                            name="destination_ip"
+                            placeholder="e.g., 8.8.8.8"
+                            data-param-type="destination_ip">
+                        <div class="invalid-feedback">
+                            A valid destination IP address is required.
+                        </div>
+                    </div>
+                </div>
+
+                <div id="no_params_container" class="js-param-wrapper collapse mb-4 p-3 alert alert-info">
+                    No specific parameters are required for this query type.
+                </div>
+                
+            </div>
+
+            <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-lg">Run Query</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    const QUERY_PARAM_MAP = {};
+    {% for key, query in queries.items %}
+    QUERY_PARAM_MAP['{{key}}']= {};
+    {% for keyParam, param in query.params.items %}
+    QUERY_PARAM_MAP['{{key}}']['{{keyParam}}']= '{{param}}';
+    {% endfor %}
+    {% endfor %}
+    
+    const $selector = $('#query-selector');
+    const $form = $('#query-form');
+    const $allContainers = $('.js-param-wrapper'); 
+    const $allGroupedInputs = $form.find('[data-param-type]');
+    // fill required inputs per query, to be reactive to user query selection
+    function updateForm() {
+        $form.removeClass('was-validated');
+        
+        const selectedKey = $selector.val();
+        const requiredParams = QUERY_PARAM_MAP[selectedKey];
+        
+        // --- 2. RESET ---
+        // Hide all containers using Bootstrap's collapse method and remove 'required'
+        $allContainers.removeClass('show');
+        $allGroupedInputs.removeAttr('required').val('').prop('disabled', true); // Also clear values for clean reset
+
+        if (requiredParams) {
+            paramKeys = Object.keys(requiredParams);
+            if (paramKeys.length === 0) {
+                // Show the "No Params" container
+                $('#no_params_container').collapse('show');
+            } else {
+                // --- 3. APPLY CHANGES ---
+                paramKeys.forEach(paramTypeKey => {
+                    const containerId = `#${paramTypeKey}_container`;
+                    
+                    // Show the container
+                    $(containerId).collapse('show');
+
+                    // Set 'required' for all inputs of that type
+                    $form.find(`[data-param-type="${paramTypeKey}"]`).attr('required', 'required').prop('disabled', false);
+                });
+            }
+        }
+    }
+    // Attach event listener using jQuery's simplified .on('change')
+    $selector.on('change', updateForm);
+
+    // Initial check (in case browser state loads with a selection)
+    updateForm();
+    const $rangeInputs = $form.find('[data-param-type="timeRange"], [data-param-type="dayRange"]');
+    
+    // ... [Existing code for updateForm function] ...
+    
+    // --- New Function: Client-Side Range Validation ---
+    function validateRangeFields() {
+        let isValid = true;
+
+        // --- 1. Validate Time Range ---
+        const $startTime = $('#timeRange-start');
+        const $endTime = $('#timeRange-end');
+
+        // Check only if both fields have values
+        if ($startTime.val() && $endTime.val()) {
+            const startVal = new Date($startTime.val());
+            const endVal = new Date($endTime.val());
+
+            if (startVal >= endVal) {
+                // Apply Bootstrap's invalid state manually
+                $startTime.addClass('is-invalid');
+                $endTime.addClass('is-invalid');
+                isValid = false;
+            } else {
+                // Ensure valid fields are cleared of the error state
+                $startTime.removeClass('is-invalid');
+                $endTime.removeClass('is-invalid');
+            }
+        }
+        
+        // --- 2. Validate Day Range ---
+        const $startDay = $('#dayRange-start');
+        const $endDay = $('#dayRange-end');
+
+        if ($startDay.val() && $endDay.val()) {
+            const startVal = new Date($startDay.val());
+            const endVal = new Date($endDay.val());
+            
+            // Note: For date inputs, comparison works directly with new Date()
+            if (startVal > endVal) { 
+                $startDay.addClass('is-invalid');
+                $endDay.addClass('is-invalid');
+                isValid = false;
+            } else {
+                $startDay.removeClass('is-invalid');
+                $endDay.removeClass('is-invalid');
+            }
+        }
+
+        return isValid;
+    }
+    
+    // --- 3. BINDING THE VALIDATION ---
+    // Run validation whenever a relevant date/datetime field changes
+    $rangeInputs.on('change input', validateRangeFields);
+
+    // --- 4. INTEGRATE WITH SUBMIT BLOCKING LOGIC ---
+    $form.on('submit', function(event) {
+        // Ensure the fields are validated right before the final check
+        const isRangeValid = validateRangeFields();
+        
+        // Use native HTML form check AND our custom check
+        if (this.checkValidity() === false || isRangeValid === false) {
+            
+            // 1. Prevent the default form submission (prevents POST request)
+            event.preventDefault();
+            
+            // 2. Stop the event from bubbling up
+            event.stopPropagation();
+            
+            // Optional: You can add an alert or custom message here.
+            console.log("Submission blocked: Required fields are missing or invalid.");
+            
+            // 3. (Bootstrap specific) If using Bootstrap's validation styles,
+            //    you would typically add the 'was-validated' class to show hints.
+            $(this).addClass('was-validated');
+        } 
+        // If checkValidity() is true, the form submits normally.
+    });
+});
+</script>
+{% endblock scripts %}

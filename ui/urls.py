@@ -1,9 +1,11 @@
 from django.contrib import admin
 from django.urls import path
-from .views import parse_and_upload
+from .views import *
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("", parse_and_upload, name="home"),       # root URL
-    path("load/", parse_and_upload, name="parse_and_upload"),
+    path("", urlHandler, name="home"),
+    path("login", loginHandler, name="login"),
+    path("register", registerHandler, name="register"),
+    path("logout", logoutHandler, name="logout"),
+    path("askQuery", queriesHandler, name="results")
 ]
