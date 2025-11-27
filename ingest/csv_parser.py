@@ -344,13 +344,14 @@ def parse_namesystem_worker(input_path, tmp_entry_path):
                     ts = ts_hdfs_compact(g["date"], g["time"])
                     action = "update"
                     action_type_names.add(action)
+
                     write_entry(
                         w_entry,
                         LogType.HDFS_NAMESYSTEM,
                         action,
                         ts,
-                        "",
                         g["ip"],
+                        "",  # dest_ip now empty
                         int(g["block"]),
                         int(g["size"]) if g.get("size") else "",
                         {},
