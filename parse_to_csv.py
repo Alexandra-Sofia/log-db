@@ -9,7 +9,6 @@ import os
 import re
 import csv
 import json
-import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Iterable, Optional, List
 
@@ -63,10 +62,8 @@ def parse_access(path: str) -> Iterable[Dict[str, Any]]:
             g = m.groupdict()
             size = None if g["size"] == "-" else int(g["size"])
             ts = ts_apache(g["timestamp"])
-            log_entry_uuid = uuid.uuid4()
 
             detail = {
-                "log_entry_id": log_entry_uuid,
                 "remote_name": g["remote_name"],
                 "auth_user": g["auth_user"],
                 "http_method": g["method"],
@@ -75,21 +72,17 @@ def parse_access(path: str) -> Iterable[Dict[str, Any]]:
                 "referrer": None if g["referrer"] == "-" else g["referrer"],
                 "user_agent": g["agent"],
             }
-            # TODO: append to details csv here
-            # also append the next line to the common logfile here. no need to re-iterate it. outside of the function
+
             yield {
-                "id": log_entry_uuid,
                 "log_type_name": "ACCESS",
                 "action_type_name": g["method"],
                 "log_timestamp": ts.isoformat(),
                 "source_ip": g["ip"],
                 "dest_ip": "",
                 "block_id": "",
-                "size_bytes": size if size is not None else ""
+                "size_bytes": size if size is not None else "",
+                "detail": json.dumps(detail, ensure_ascii=False),
             }
-            writer.writerow(row, writer)
-
-
 
     log(f"ACCESS parsing done: matched {matched}/{total}")
 
@@ -317,10 +310,8 @@ def main(logdir: str = "/input-logfiles", outdir: str = "./parsed") -> None:
 
         # ACCESS
         access_path = os.path.join(logdir, "access_log_full")
-        # here i want the lines to be writen the first time they are iterated inside their function and not re-iterate them
-        parse_access(access_path, writer)
-        # for row in parse_access(access_path):
-        #     writer.writerow(row)
+        for row in parse_access(access_path):
+            writer.writerow(row)
 
         # DATAXCEIVER
         datax_path = os.path.join(logdir, "HDFS_DataXceiver.log")
