@@ -19,7 +19,7 @@ ON CONFLICT (name) DO NOTHING;
 
 
 CREATE TABLE IF NOT EXISTS action_type (
-    id      SMALLSERIAL PRIMARY KEY,
+    id      UUID PRIMARY KEY,
     name    TEXT UNIQUE NOT NULL
 );
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS log_entry (
     id              TEXT PRIMARY KEY,
 
     log_type_id     SMALLINT NOT NULL,
-    action_type_id  SMALLINT,
+    action_type_id  UUID,
 
     log_timestamp   TIMESTAMPTZ NOT NULL,
 
@@ -111,31 +111,3 @@ CREATE INDEX IF NOT EXISTS idx_access_referrer
 CREATE INDEX IF NOT EXISTS idx_access_user_agent
     ON log_access_detail (user_agent);
 
-
--- -------------------------
--- App users
--- -------------------------
-
-CREATE TABLE IF NOT EXISTS app_user (
-    id          BIGSERIAL PRIMARY KEY,
-    name        TEXT NOT NULL,
-    login_name  TEXT UNIQUE NOT NULL,
-    password    TEXT NOT NULL,
-    address     TEXT,
-    email       TEXT UNIQUE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS user_query_log (
-    id           BIGSERIAL   PRIMARY KEY,
-    user_id      BIGINT      NOT NULL,
-    query_text   TEXT        NOT NULL,
-    executed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_user_query_user
-        FOREIGN KEY (user_id)
-        REFERENCES app_user(id)
-        DEFERRABLE INITIALLY DEFERRED
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_query_user
-    ON user_query_log (user_id);

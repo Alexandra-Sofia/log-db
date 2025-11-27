@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Parse raw log files into CSVs suitable for COPY into PostgreSQL.
-
-Outputs (in ./parsed by default):
-  - log_type.csv
-  - action_type.csv
-  - log_entry.csv
-  - log_access_detail.csv
+Parallel Log Parser:
+- Three processes parse ACCESS, DATAXCEIVER, NAMESYSTEM logs in parallel.
+- Each writes temporary CSVs into parsed/tmp/.
+- Parent process merges them into final CSVs:
+    - log_type.csv
+    - action_type.csv
+    - log_entry.csv
+    - log_access_detail.csv
 """
 
 import os
@@ -14,8 +15,8 @@ import re
 import csv
 import json
 import uuid
-from itertools import count
 from datetime import datetime, timezone
+from multiprocessing import Process
 
 from util import LogType
 
@@ -29,7 +30,8 @@ ACTION_TYPE_FILENAME = "action_type.csv"
 LOG_ENTRY_FILENAME = "log_entry.csv"
 ACCESS_DETAIL_FILENAME = "log_access_detail.csv"
 
-# Fields for log_entry.csv
+TMP_DIRNAME = "tmp"
+
 ENTRY_FIELDS = [
     "id",
     "log_type_id",
@@ -40,6 +42,20 @@ ENTRY_FIELDS = [
     "block_id",
     "size_bytes",
 ]
+
+ACCESS_DETAIL_FIELDS = [
+    "log_entry_id",
+    "remote_name",
+    "auth_user",
+    "http_method",
+    "resource",
+    "http_status",
+    "referrer",
+    "user_agent",
+]
+
+# Deterministic namespace for action_type UUIDs
+ACTION_TYPE_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
 
 # ============================================================
@@ -69,14 +85,12 @@ DATAX_REGEX = re.compile(
         \s+src:\s+/(?P<src_receiving>[0-9.]+):\d+
         \s+dest:\s+/(?P<dst_receiving>[0-9.]+):\d+
         |
-
         (?P<op_received>Received)\s+block\s+
         (?P<blk_received>blk_[0-9\-]+)
         .*?src:\s+/(?P<src_received>[0-9.]+):\d+
         \s+dest:\s+/(?P<dst_received>[0-9.]+):\d+
         (?:.*?size\s+(?P<size_received>\d+))?
         |
-
         (?P<src_served>[0-9.]+):\d+\s+
         (?P<op_served>Served)\s+block\s+
         (?P<blk_served>blk_[0-9\-]+)
@@ -123,7 +137,7 @@ NAMESYS_ASK_REPLICATE_REGEX = re.compile(
 
 
 # ============================================================
-# Helpers and ID generators
+# Logging & timestamps
 # ============================================================
 
 def log(msg: str) -> None:
@@ -139,76 +153,37 @@ def ts_hdfs_compact(date: str, time: str) -> datetime:
     return datetime.strptime(date + time, "%y%m%d%H%M%S")
 
 
-# In-memory mapping from LogType to integer ID
-LOG_TYPE_IDS: dict[LogType, int] = {}
+# ============================================================
+# ID helpers
+# ============================================================
 
-# In-memory mapping from action name -> integer ID
-ACTION_TYPE_IDS: dict[str, int] = {}
-_action_type_counter = count(1)
+def load_log_type_ids():
+    """Static mapping from LogType enum."""
+    ids = {}
+    for idx, lt in enumerate(LogType.list(), start=1):
+        ids[lt] = idx
+    return ids
 
 
-def init_log_type_ids(outdir: str) -> None:
+def deterministic_action_type_id(action: str) -> str:
     """
-    Assign small integer IDs to each LogType and write log_type.csv.
-    Full snapshot every run.
+    Deterministic UUID per action name, same across all workers and runs.
     """
-    global LOG_TYPE_IDS
-
-    log_type_path = os.path.join(outdir, LOG_TYPE_FILENAME)
-    log(f"Writing log_type CSV to: {log_type_path}")
-
-    with open(log_type_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "name"])
-        writer.writeheader()
-
-        for idx, lt in enumerate(LogType.list(), start=1):
-            LOG_TYPE_IDS[lt] = idx
-            writer.writerow({"id": idx, "name": lt.value})
+    return str(uuid.uuid5(ACTION_TYPE_NAMESPACE, action))
 
 
-def get_action_type_id(action: str) -> int:
-    """
-    Get or assign a small integer ID for a given action_type name.
-    """
-    if action not in ACTION_TYPE_IDS:
-        ACTION_TYPE_IDS[action] = next(_action_type_counter)
-    return ACTION_TYPE_IDS[action]
+# ============================================================
+# Core write_entry function (per process)
+# ============================================================
 
-
-def write_action_type_csv(outdir: str) -> None:
-    """
-    Write full snapshot of action types seen in this run into action_type.csv.
-    """
-    action_type_path = os.path.join(outdir, ACTION_TYPE_FILENAME)
-    log(f"Writing action_type CSV to: {action_type_path}")
-
-    with open(action_type_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "name"])
-        writer.writeheader()
-
-        for name, id_ in sorted(ACTION_TYPE_IDS.items(), key=lambda kv: kv[1]):
-            writer.writerow({"id": id_, "name": name})
-
-
-def write_entry(writer_entry,
-                log_type: LogType,
-                action: str,
-                timestamp: datetime,
-                source_ip: str,
-                dest_ip: str,
-                block_id,
-                size_bytes) -> str:
-    """
-    Unified writer for log_entry.csv using numeric IDs for log_type and action_type.
-    """
+def write_entry(writer_entry, log_type, action, timestamp,
+                source_ip, dest_ip, block_id, size_bytes, detail,
+                LOG_TYPE_IDS):
     entry_id = str(uuid.uuid4())
-    log_type_id = LOG_TYPE_IDS[log_type]
-    action_type_id = get_action_type_id(action)
-
     writer_entry.writerow({
         "id": entry_id,
-        "log_type_id": log_type_id,
-        "action_type_id": action_type_id,
+        "log_type_id": LOG_TYPE_IDS[log_type],
+        "action_type_id": deterministic_action_type_id(action),
         "log_timestamp": timestamp.isoformat(),
         "source_ip": source_ip,
         "dest_ip": dest_ip,
@@ -219,57 +194,46 @@ def write_entry(writer_entry,
 
 
 # ============================================================
-# ACCESS parser
+# Parsers (each running in its own process)
 # ============================================================
 
-def parse_access(path: str, writer_entry, outdir: str) -> None:
-    log(f"Parsing ACCESS log: {path}")
-    total = 0
-    matched = 0
+def parse_access_worker(input_path, tmp_entry_path, tmp_detail_path):
+    LOG_TYPE_IDS = load_log_type_ids()
+    action_type_names = set()
 
-    detail_csv_path = os.path.join(outdir, ACCESS_DETAIL_FILENAME)
-    log(f"Writing ACCESS detail CSV to: {detail_csv_path}")
+    with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv, \
+         open(tmp_detail_path, "w", newline="", encoding="utf-8") as det_csv:
 
-    ACCESS_DETAIL_FIELDS = [
-        "log_entry_id",
-        "remote_name",
-        "auth_user",
-        "http_method",
-        "resource",
-        "http_status",
-        "referrer",
-        "user_agent",
-    ]
+        w_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
+        w_entry.writeheader()
+        w_detail = csv.DictWriter(det_csv, fieldnames=ACCESS_DETAIL_FIELDS)
+        w_detail.writeheader()
 
-    with open(detail_csv_path, "w", newline="", encoding="utf-8") as det_csv:
-        writer_detail = csv.DictWriter(det_csv, fieldnames=ACCESS_DETAIL_FIELDS)
-        writer_detail.writeheader()
-
-        with open(path, encoding="utf-8") as f:
+        with open(input_path, encoding="utf-8") as f:
             for raw in f:
-                total += 1
                 m = ACCESS_REGEX.match(raw.rstrip("\n"))
                 if not m:
                     continue
-
-                matched += 1
                 g = m.groupdict()
-
-                size = None if g["size"] == "-" else int(g["size"])
                 ts = ts_apache(g["timestamp"])
 
+                action = g["method"]
+                action_type_names.add(action)
+
                 entry_id = write_entry(
-                    writer_entry,
+                    w_entry,
                     LogType.ACCESS,
-                    g["method"],
+                    action,
                     ts,
                     g["ip"],
                     "",
                     "",
-                    size if size is not None else "",
+                    int(g["size"]) if g["size"] != "-" else "",
+                    {},
+                    LOG_TYPE_IDS,
                 )
 
-                writer_detail.writerow({
+                w_detail.writerow({
                     "log_entry_id": entry_id,
                     "remote_name": g["remote_name"],
                     "auth_user": g["auth_user"],
@@ -280,169 +244,271 @@ def parse_access(path: str, writer_entry, outdir: str) -> None:
                     "user_agent": g["agent"],
                 })
 
-    log(f"ACCESS parsing done: matched {matched}/{total}")
+    # Save action types for parent (id, name via deterministic UUID)
+    at_path = tmp_detail_path.replace("access_detail", "action_types")
+    with open(at_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+        writer.writeheader()
+        for name in sorted(action_type_names):
+            writer.writerow({"id": deterministic_action_type_id(name), "name": name})
 
 
-# ============================================================
-# DataXceiver parser
-# ============================================================
+def parse_dataxceiver_worker(input_path, tmp_entry_path):
+    LOG_TYPE_IDS = load_log_type_ids()
+    action_type_names = set()
 
-def parse_dataxceiver(path: str, writer_entry) -> None:
-    log(f"Parsing HDFS_DataXceiver log: {path}")
-    total = 0
-    matched = 0
+    with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv:
+        w_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
+        w_entry.writeheader()
 
-    with open(path, encoding="utf-8") as f:
-        for raw in f:
-            total += 1
-            m = DATAX_REGEX.match(raw.rstrip("\n"))
-            if not m:
-                continue
+        with open(input_path, encoding="utf-8") as f:
+            for raw in f:
+                m = DATAX_REGEX.match(raw.rstrip("\n"))
+                if not m:
+                    continue
 
-            matched += 1
-            g = m.groupdict()
-            ts = ts_hdfs_compact(g["date"], g["time"])
-
-            if g.get("op_receiving"):
-                write_entry(
-                    writer_entry,
-                    LogType.HDFS_DATAXCEIVER,
-                    "receiving",
-                    ts,
-                    g["src_receiving"],
-                    g["dst_receiving"],
-                    int(g["blk_receiving"].replace("blk_", "")),
-                    "",
-                )
-                continue
-
-            if g.get("op_received"):
-                size = g.get("size_received")
-                write_entry(
-                    writer_entry,
-                    LogType.HDFS_DATAXCEIVER,
-                    "received",
-                    ts,
-                    g["src_received"],
-                    g["dst_received"],
-                    int(g["blk_received"].replace("blk_", "")),
-                    int(size) if size else "",
-                )
-                continue
-
-            if g.get("op_served"):
-                write_entry(
-                    writer_entry,
-                    LogType.HDFS_DATAXCEIVER,
-                    "served",
-                    ts,
-                    g["src_served"],
-                    g["dst_served"],
-                    int(g["blk_served"].replace("blk_", "")),
-                    "",
-                )
-                continue
-
-    log(f"HDFS_DataXceiver parsing done: matched {matched}/{total}")
-
-
-# ============================================================
-# Namesystem parser
-# ============================================================
-
-def parse_namesystem(path: str, writer_entry) -> None:
-    log(f"Parsing HDFS_FSNamesystem log: {path}")
-    total = 0
-    matched = 0
-
-    with open(path, encoding="utf-8") as f:
-        for raw in f:
-            total += 1
-
-            m_upd = NAMESYS_UPDATE_REGEX.match(raw.rstrip("\n"))
-            if m_upd:
-                matched += 1
-                g = m_upd.groupdict()
+                g = m.groupdict()
                 ts = ts_hdfs_compact(g["date"], g["time"])
 
-                write_entry(
-                    writer_entry,
-                    LogType.HDFS_NAMESYSTEM,
-                    "update",
-                    ts,
-                    "",
-                    g["ip"],
-                    int(g["block"]),
-                    int(g["size"]) if g.get("size") else "",
-                )
-                continue
-
-            m_rep = NAMESYS_ASK_REPLICATE_REGEX.match(raw.rstrip("\n"))
-            if m_rep:
-                g = m_rep.groupdict()
-                ts = ts_hdfs_compact(g["date"], g["time"])
-                src_ip = g["src_ip"]
-                block_id = int(g["block"])
-
-                for tok in g["dest_list"].split():
-                    if ":" not in tok:
-                        continue
-
-                    matched += 1
-                    dest_ip = tok.split(":", 1)[0]
-
+                if g.get("op_receiving"):
+                    action = "receiving"
+                    action_type_names.add(action)
                     write_entry(
-                        writer_entry,
-                        LogType.HDFS_NAMESYSTEM,
-                        "replicate",
+                        w_entry,
+                        LogType.HDFS_DATAXCEIVER,
+                        action,
                         ts,
-                        src_ip,
-                        dest_ip,
-                        block_id,
+                        g["src_receiving"],
+                        g["dst_receiving"],
+                        int(g["blk_receiving"].replace("blk_", "")),
                         "",
+                        {},
+                        LOG_TYPE_IDS,
                     )
 
-    log(f"HDFS_FSNamesystem parsing done: matched {matched}/{total}")
+                elif g.get("op_received"):
+                    action = "received"
+                    action_type_names.add(action)
+                    size = g["size_received"]
+                    write_entry(
+                        w_entry,
+                        LogType.HDFS_DATAXCEIVER,
+                        action,
+                        ts,
+                        g["src_received"],
+                        g["dst_received"],
+                        int(g["blk_received"].replace("blk_", "")),
+                        int(size) if size else "",
+                        {},
+                        LOG_TYPE_IDS,
+                    )
+
+                elif g.get("op_served"):
+                    action = "served"
+                    action_type_names.add(action)
+                    write_entry(
+                        w_entry,
+                        LogType.HDFS_DATAXCEIVER,
+                        action,
+                        ts,
+                        g["src_served"],
+                        g["dst_served"],
+                        int(g["blk_served"].replace("blk_", "")),
+                        "",
+                        {},
+                        LOG_TYPE_IDS,
+                    )
+
+    # Save action types
+    at_path = tmp_entry_path.replace("log_entry", "action_types")
+    with open(at_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+        writer.writeheader()
+        for name in sorted(action_type_names):
+            writer.writerow({"id": deterministic_action_type_id(name), "name": name})
+
+
+def parse_namesystem_worker(input_path, tmp_entry_path):
+    LOG_TYPE_IDS = load_log_type_ids()
+    action_type_names = set()
+
+    with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv:
+        w_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
+        w_entry.writeheader()
+
+        with open(input_path, encoding="utf-8") as f:
+            for raw in f:
+                m_upd = NAMESYS_UPDATE_REGEX.match(raw.rstrip("\n"))
+                if m_upd:
+                    g = m_upd.groupdict()
+                    ts = ts_hdfs_compact(g["date"], g["time"])
+                    action = "update"
+                    action_type_names.add(action)
+                    write_entry(
+                        w_entry,
+                        LogType.HDFS_NAMESYSTEM,
+                        action,
+                        ts,
+                        "",
+                        g["ip"],
+                        int(g["block"]),
+                        int(g["size"]) if g.get("size") else "",
+                        {},
+                        LOG_TYPE_IDS,
+                    )
+                    continue
+
+                m_rep = NAMESYS_ASK_REPLICATE_REGEX.match(raw.rstrip("\n"))
+                if m_rep:
+                    g = m_rep.groupdict()
+                    ts = ts_hdfs_compact(g["date"], g["time"])
+                    src_ip = g["src_ip"]
+                    block_id = int(g["block"])
+                    action = "replicate"
+                    action_type_names.add(action)
+
+                    for tok in g["dest_list"].split():
+                        if ":" not in tok:
+                            continue
+                        dest_ip = tok.split(":", 1)[0]
+
+                        write_entry(
+                            w_entry,
+                            LogType.HDFS_NAMESYSTEM,
+                            action,
+                            ts,
+                            src_ip,
+                            dest_ip,
+                            block_id,
+                            "",
+                            {},
+                            LOG_TYPE_IDS,
+                        )
+
+    # Save action types
+    at_path = tmp_entry_path.replace("log_entry", "action_types")
+    with open(at_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+        writer.writeheader()
+        for name in sorted(action_type_names):
+            writer.writerow({"id": deterministic_action_type_id(name), "name": name})
 
 
 # ============================================================
-# Driver
+# Parent process: merge results
 # ============================================================
 
-def main(logdir: str = "/input-logfiles", outdir: str = "./parsed") -> None:
+def merge_csv_files(tmp_paths, output, fields):
+    with open(output, "w", newline="", encoding="utf-8") as final:
+        writer = csv.DictWriter(final, fieldnames=fields)
+        writer.writeheader()
+
+        for tmp in tmp_paths:
+            with open(tmp, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    writer.writerow(row)
+
+
+def merge_action_types(tmp_action_paths, outdir):
+    all_types = {}  # name -> id
+    for path in tmp_action_paths:
+        with open(path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                name = row["name"]
+                id_ = row["id"]  # UUID as string
+                if name not in all_types:
+                    all_types[name] = id_
+                else:
+                    # If already present, assert consistency (optional)
+                    if all_types[name] != id_:
+                        raise ValueError(
+                            f"Inconsistent UUID for action_type '{name}': "
+                            f"{all_types[name]} vs {id_}"
+                        )
+
+    with open(os.path.join(outdir, ACTION_TYPE_FILENAME), "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+        writer.writeheader()
+        for name, id_ in sorted(all_types.items(), key=lambda x: x[0]):
+            writer.writerow({"id": id_, "name": name})
+
+
+def write_log_type_csv(outdir):
+    path = os.path.join(outdir, LOG_TYPE_FILENAME)
+    LOG_TYPE_IDS = load_log_type_ids()
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+        writer.writeheader()
+        for lt, id_ in LOG_TYPE_IDS.items():
+            writer.writerow({"id": id_, "name": lt.value})
+
+
+# ============================================================
+# Main
+# ============================================================
+
+def main(logdir="/input-logfiles", outdir="./parsed"):
     os.makedirs(outdir, exist_ok=True)
+    tmpdir = os.path.join(outdir, TMP_DIRNAME)
+    os.makedirs(tmpdir, exist_ok=True)
 
-    # 1. Initialize log_type IDs and write log_type.csv
-    init_log_type_ids(outdir)
+    # Log paths
+    access_log = os.path.join(logdir, LogType.ACCESS.filename)
+    datax_log = os.path.join(logdir, LogType.HDFS_DATAXCEIVER.filename)
+    namesys_log = os.path.join(logdir, LogType.HDFS_NAMESYSTEM.filename)
 
-    # 2. Open log_entry.csv for all log rows
-    entry_path = os.path.join(outdir, LOG_ENTRY_FILENAME)
-    log(f"Writing log_entry CSV to: {entry_path}")
+    # Temp CSV files
+    tmp_access_entry = os.path.join(tmpdir, "log_entry_access.csv")
+    tmp_access_detail = os.path.join(tmpdir, "access_detail_access.csv")
+    tmp_access_actions = os.path.join(tmpdir, "action_types_access.csv")
 
-    with open(entry_path, "w", newline="", encoding="utf-8") as entry_csv:
-        writer_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
-        writer_entry.writeheader()
+    tmp_datax_entry = os.path.join(tmpdir, "log_entry_datax.csv")
+    tmp_datax_actions = os.path.join(tmpdir, "action_types_datax.csv")
 
-        parse_access(
-            os.path.join(logdir, LogType.ACCESS.filename),
-            writer_entry,
-            outdir,
-        )
+    tmp_namesys_entry = os.path.join(tmpdir, "log_entry_namesys.csv")
+    tmp_namesys_actions = os.path.join(tmpdir, "action_types_namesys.csv")
 
-        parse_dataxceiver(
-            os.path.join(logdir, LogType.HDFS_DATAXCEIVER.filename),
-            writer_entry,
-        )
+    # Parallel processes
+    p1 = Process(target=parse_access_worker, args=(access_log, tmp_access_entry, tmp_access_detail))
+    p2 = Process(target=parse_dataxceiver_worker, args=(datax_log, tmp_datax_entry))
+    p3 = Process(target=parse_namesystem_worker, args=(namesys_log, tmp_namesys_entry))
 
-        parse_namesystem(
-            os.path.join(logdir, LogType.HDFS_NAMESYSTEM.filename),
-            writer_entry,
-        )
+    log("Starting workers...")
+    p1.start()
+    p2.start()
+    p3.start()
 
-    # 3. Write action_type.csv snapshot
-    write_action_type_csv(outdir)
+    p1.join()
+    p2.join()
+    p3.join()
+    log("All parsers completed.")
 
-    log("All CSVs created successfully.")
+    # Write log_type.csv from enum
+    write_log_type_csv(outdir)
+
+    # Merge action types
+    merge_action_types(
+        [tmp_access_actions, tmp_datax_actions, tmp_namesys_actions],
+        outdir
+    )
+
+    # Merge log_entry
+    merge_csv_files(
+        [tmp_access_entry, tmp_datax_entry, tmp_namesys_entry],
+        os.path.join(outdir, LOG_ENTRY_FILENAME),
+        ENTRY_FIELDS
+    )
+
+    # Merge access detail (only one source has real data)
+    merge_csv_files(
+        [tmp_access_detail],
+        os.path.join(outdir, ACCESS_DETAIL_FILENAME),
+        ACCESS_DETAIL_FIELDS
+    )
+
+    log("All final CSVs created successfully.")
 
 
 if __name__ == "__main__":
