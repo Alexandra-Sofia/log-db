@@ -86,7 +86,6 @@ def parse_access_worker(
                     "log_entry_id": entry_id,
                     "remote_name": fields["remote_name"],
                     "auth_user": fields["auth_user"],
-                    "http_method": fields["method"],
                     "resource": fields["resource"],
                     "http_status": int(fields["status"]),
                     "referrer": (

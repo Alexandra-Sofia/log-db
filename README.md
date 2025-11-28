@@ -136,9 +136,7 @@ Static from enum:
 - Normalized lookup tables
 - Separate ACCESS detail table
 - High‑performance indexes
-- No JSON fields
 - COPY‑friendly structure
-- Foreign keys with deferred constraints (optional)
 
 ---
 
@@ -221,7 +219,7 @@ Indexes ensure efficient execution.
 - CSVs must preserve headers when using COPY
 - ACCESS details exist only for ACCESS logs
 - The django container occasionally fails due to a bug, so docker compose needs to be restarted.
-
+- The db volume is persistent. For fresh deployments execute `docker compose down -v`
 ---
 
 ## 12. License

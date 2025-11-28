@@ -24,7 +24,6 @@ ACCESS_DETAIL_FIELDS = [
     "log_entry_id",
     "remote_name",
     "auth_user",
-    "http_method",
     "resource",
     "http_status",
     "referrer",
