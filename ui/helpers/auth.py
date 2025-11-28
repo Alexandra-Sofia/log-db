@@ -7,3 +7,6 @@ def getUser(request):
         "isUserAuthenticated": request.user.is_authenticated,
         "user": request.user.username
     }
+
+def getUserId(request):
+    return request.user.id

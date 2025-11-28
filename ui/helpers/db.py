@@ -1,6 +1,8 @@
 import time
 from .queries import hasQuery, getQuery
 from django.db import connection, DatabaseError
+from .auth import getUserId
+
 OMMITED_PARAMS = ['csrfmiddlewaretoken', 'query']
 
 STORED_PROCEDURES = {
@@ -76,7 +78,7 @@ STORED_PROCEDURES = {
     },
     'log_user_query': {
         'admin': True,
-        'sql': 'log_user_query(%s, %s, %s)',
+        'sql': "SELECT 'done' from log_user_query(%s, %s, %s)",
     }
 }
 
@@ -108,28 +110,26 @@ def getParams(request):
 def getResults(request): 
     query = getQuery(request)
     params = getParams(request)
-    result = run_log_analyzer(query, params)
+    userId = getUserId(request)
+    result = run_log_analyzer(query, params, userId)
+
     return result
 
-def run_log_analyzer(query, params):
-    if query != None:
-        sql = getStoredProcedure(query.get('storedProcedure'))
-        parameters = []
-        for key in getStoredProcedureParameters(query.get('storedProcedure')):
-            parameters.append(params.get(key, 'null'))
-    else:
+def run_log_analyzer(query, params, userid):
+    if query is None:
         raise ValueError(f"Unknown query method: {query}")
-    # remove to make the call
-    # return {
-    #     'data': [{'sql': sql, 'parameters': parameters}],
-    #     'executionTimeInMs': 12314,
-    # }
+
+    sql = getStoredProcedure(query.get('storedProcedure'))
+    parameters = []
+    for key in getStoredProcedureParameters(query.get('storedProcedure')):
+        parameters.append(params.get(key, 'null'))
+
     try:
         # 1. Obtain a cursor and execute the raw SQL
         with connection.cursor() as cursor:
             
             # log user query
-            # cursor.execute(getStoredProcedure('log_user_query'), [1, sql, parameters])
+            cursor.execute(STORED_PROCEDURES.get('log_user_query').get('sql'), [userid, sql, ', '.join(parameters)])
             
             # IMPORTANT: Use placeholders (%s) and pass parameters separately 
             # to prevent SQL Injection.
@@ -150,8 +150,8 @@ def run_log_analyzer(query, params):
                     'data': results,
                     'executionTimeInMs': duration_ms
                 }
-            else:
-                return [] # No results returned
+
+        return {}
 
     except DatabaseError as e:
         print(f"Database Error during SP execution: {e}")
