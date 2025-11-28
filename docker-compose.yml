@@ -50,9 +50,9 @@ services:
         ts() { date "+%Y-%m-%d %H:%M:%S.%3N"; }
         echo "$(ts) | Ingest step deployment: START." &&
         ./wait_for_postgres.sh &&
-        python csv_parser.py &&
+        python parse.py &&
         echo "$(ts) | DEBUG: CSV done" &&
-        python copy_loader.py &&
+        python load.py &&
         echo "$(ts) | Ingest step deployment: END."
       '
  
