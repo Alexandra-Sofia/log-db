@@ -24,11 +24,10 @@ LogDB automates the ingestion of three major log categories:
 
 The system:
 - Parses logs using parallel worker processes
-- Writes structured CSVs into `parsed/`
 - Normalizes log types and actions
 - Generates deterministic UUIDs for action types
+- Creates temporary structured CSVs
 - Supports fast ingestion via PostgreSQL `COPY`
-- Supports slower but flexible ingestion via batch inserts
 
 The tool is fully containerized and runs inside Docker Compose.
 
@@ -38,25 +37,32 @@ The tool is fully containerized and runs inside Docker Compose.
 
 ```
 .
-├── input-logfiles/
-│   ├── access_log_full
-│   ├── HDFS_DataXceiver.log
-│   └── HDFS_FS_Namesystem.log
-││
-├── logdb_web/
-│   ├── parser/
-│   ├── ingest/
-│   └── util/
-│
-├── docker-compose.yml
-└── README.md
+├── Dockerfile
+├── README.md
+├── db
+│   ├── init.sql                -- Original sql schema loaded during docker compose.
+│   └── my-queries.txt          -- Simple storage of queries, not used just for archival purposes.
+├── docker-compose.yml      
+├── ingest                      -- Implementation of ingestion step and corresponding dockerised service.
+│   ├── Dockerfile
+│   ├── __init__.py
+│   ├── batch_insertion/        -- Batch insertion scripts, not used only stored for performance evaluation and archival purposes.
+│   ├── *.py                    -- Generic parse step implementation scripts.
+│   ├── wait_for_postgres.sh    -- Shell script that waits for the postgresql container to be up and running, before executing ingest step.
+│   └── workers/                -- Dedicated parsers for each specific logfile type.
+├── input-logfiles/             -- Directory to put the input loglifes for parsing.
+├── load_with_copy.py           -- Implementation of data insertion in db via COPY.
+├── logdb_web/                  -- Django webapp configuration files.
+├── manage.py                   -- Django administrative tasks script.
+├── requirements.txt            -- Django container python env requirements.
+└── ui/                         -- Django web app implementation (follows django default filestructure).
 ```
 
 ---
 
 ## 3. Parsing Architecture
 
-The parser runs **3 separate worker processes**:
+The parser runs **3 separate worker processes** in parallel:
 
 | Worker | Input File | Output Files | Notes |
 |-------|------------|--------------|-------|
@@ -64,35 +70,12 @@ The parser runs **3 separate worker processes**:
 | DATAX | HDFS_DataXceiver.log | log_entry_datax.csv, action_types_datax.csv | Normalizes receiving, received, served ops |
 | NAMESYSTEM | HDFS_FS_Namesystem.log | log_entry_namesys.csv, action_types_namesys.csv | Handles update and replicate events |
 
-Workers write CSVs into `parsed/tmp/`.
+Workers write CSVs into `parsed/tmp/` inside the ingest docker container.
 
 When all workers complete, the parent process merges outputs into final CSVs.
-
 ---
 
-## 4. Regex Extraction
-
-### ACCESS log regex
-Handles complex referrer and user‑agent cases:
-
-```
-(?P<ip>\S+) (?P<remote_name>\S+) (?P<auth_user>\S+)
-\[(?P<timestamp>.+?)\]
-"(?P<method>\S+) (?P<resource>\S+) \S+"
-(?P<status>\d{3})
-(?P<size>\S+)
-"(?P<referrer>.*?)" "(?P<agent>.*?)"
-```
-
-Works with:
-- `-` placeholders
-- Missing referrers
-- Mixed quoting style
-- Agents containing spaces, parentheses, semicolons
-
----
-
-## 5. Unified Log Model
+## 4. Unified Log Model
 
 Final CSV output includes:
 
@@ -113,7 +96,6 @@ size_bytes
 log_entry_id
 remote_name
 auth_user
-http_method
 resource
 http_status
 referrer
@@ -131,31 +113,26 @@ Static from enum:
 
 ---
 
-## 6. PostgreSQL Schema (Optimized)
-
-- Normalized lookup tables
-- Separate ACCESS detail table
-- High‑performance indexes
-- COPY‑friendly structure
-
----
-
-## 7. Ingestion Workflow
+## 5. Ingestion Workflow
 
 ### A. Parse logs
 Executed inside the `ingest` container:
 
 ```
-python parse_parallel.py
+python parse.py
 ```
 
 Produces CSVs in `parsed/`.
 
 ### B. Load CSVs into PostgreSQL
 
-Two supported methods:
+```
+python load.py 
+```
 
-#### 1. COPY (fastest)
+Two impelented methods:
+
+#### 1. COPY (fastest, currently in use)
 ```
 COPY log_type FROM 'log_type.csv' CSV HEADER;
 COPY action_type FROM 'action_type.csv' CSV HEADER;
@@ -163,50 +140,61 @@ COPY log_entry FROM 'log_entry.csv' CSV HEADER;
 COPY log_access_detail FROM 'log_access_detail.csv' CSV HEADER;
 ```
 
-#### 2. Batch inserts
+#### 2. Batch inserts (archived)
 Uses psycopg2 `execute_values` with 100k batches.
 
 ---
 
-## 8. Docker Compose Usage
+## 6. PostgreSQL Schema (Optimized)
+
+- Normalized lookup tables
+- Separate ACCESS detail table
+- High‑performance indexes
+- COPY‑friendly structure
+- ERM schema provided additionally
+
+---
+
+## 7. Django webapp
+
+The app follows Django’s standard project layout and keeps to the default boilerplate wherever possible.
+The Web UI supports:
+- Registration and sign in of new users using django built-in authentication service.
+- Dropdown menu of the 14 possible interactions with the database executing the stored functions:
+  - fn_total_logs_per_action_type
+  - fn_logs_per_day_for_action
+  - fn_most_common_action_per_source_ip
+  - fn_top_blocks_by_actions_per_day
+  - fn_referrers_multiple_resources
+  - fn_second_most_common_resource
+  - fn_access_logs_below_size
+  - fn_blocks_rep_and_serv_same_day
+  - fn_blocks_rep_and_serv_same_day_hour
+  - fn_access_logs_by_user_agent_version
+  - fn_ips_with_method_in_range
+  - fn_ips_with_two_methods_in_range
+  - fn_ips_with_n_methods_in_range
+  - fn_insert_new_log
+- Each option of the dropdown menu offers the placeholders for its corresponding functions parameters.
+- For every query executed by the UI, a new column is inserted in the user_query_log table.
+- 
+
+## 7. Docker Compose Usage
 
 ```
 docker compose up --build
 ```
 
 Services:
-- `postgres`: backend database
-- `ingest`: parser + loader
-- `django` (optional): UI for running queries
-
-The ingest container:
-1. waits for PostgreSQL
-2. parses input logs
-3. writes CSV files
-4. uploads them to the DB
-
----
-
-## 9. Running the Parser Manually
-
-```
-python parse_parallel.py --input ./input-logfiles --out ./parsed
-```
+- `postgres`:  backend database
+- `ingest`:    parser + loader
+- `django`:    UI for running queries
 
 ---
 
 ## 10. Queries Supported
 
-The schema supports all 13 assignment queries, including:
-
-- logs per type per time range  
-- top‑N block IDs  
-- referrers linking multiple resources  
-- 2nd most common resource  
-- Firefox UA matches  
-- source IP frequency  
-- multi‑method IP matching  
-- same‑day replication and serving correlation  
+The schema supports all 13 assignment queries, and also the insertion of a log entry with new data.
 
 Indexes ensure efficient execution.
 
@@ -214,12 +202,19 @@ Indexes ensure efficient execution.
 
 ## 11. Limitations & Notes
 
-- Requires all three log files present
-- Deterministic UUIDs must remain unchanged
-- CSVs must preserve headers when using COPY
-- ACCESS details exist only for ACCESS logs
+### Deployment issues
 - The django container occasionally fails due to a bug, so docker compose needs to be restarted.
 - The db volume is persistent. For fresh deployments execute `docker compose down -v`
+- Requires all three log files present
+
+### Design limitations
+- ACCESS details exist only for ACCESS logs
+- Overhead for supporting new log files is relatively small. Implementation needs:
+  - New regex definition for parsing.
+  - New worker for parsing the input logfile.
+  - Mapping of new log data columns to the log_entry table and creation of new dedicated details table for unique columns.
+  - Extention of load.py to COPY the data for the new details table.
+
 ---
 
 ## 12. License
@@ -230,7 +225,7 @@ Internal academic project. No license.
 
 ## 13. Author
 
-LogDB ingestion & parsing engine  
-Developed by Alexandra Sofia
+LogDB ingestion & parsing engine + Django web interface,  
+Developed by Sofia, Alexandra 
 2025
 
