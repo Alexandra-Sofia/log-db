@@ -10,6 +10,9 @@ This README covers:
 - Web UI overview
 - Development notes
 
+#### 🔧 System Requirements
+- A working installation of Docker Engine or Docker Desktop for the docker compose execution.
+
 ---
 
 ## 1. Overview
@@ -67,7 +70,7 @@ The pipeline is fully containerized and gets deployed via Docker Compose.
 
 ## 3. PostgreSQL Schema Model representation
 
-The schema is described thoroughly in a separate (readme.md)[./db/README.md]
+The schema is described thoroughly in a separate [README.md](./db/README.md).
 
 ---
 
