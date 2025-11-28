@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 """
-Load parsed CSVs into PostgreSQL using direct COPY into final tables.
+Load parsed CSV files into PostgreSQL using COPY.
 
 Environment variables:
-    PGHOST
-    PGPORT
-    PGUSER
-    PGPASSWORD
-    PGDATABASE
+  PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
 
 Input CSVs:
-    ./parsed/log_type.csv
-    ./parsed/action_type.csv
-    ./parsed/log_entry.csv
-    ./parsed/log_access_detail.csv
+  ./parsed/log_type.csv
+  ./parsed/action_type.csv
+  ./parsed/log_entry.csv
+  ./parsed/log_access_detail.csv
 """
 
 import os
 import psycopg
 from datetime import datetime, timezone
+
+from util import tiny_logger
 
 # CSV paths
 CSV_DIR = "./parsed"
@@ -29,25 +27,31 @@ LOG_ENTRY_CSV = os.path.join(CSV_DIR, "log_entry.csv")
 ACCESS_DETAIL_CSV = os.path.join(CSV_DIR, "log_access_detail.csv")
 
 
-def log(msg: str) -> None:
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    print(f"{ts} | {msg}", flush=True)
-
-
-# ======================================================
-# Generic COPY helper
-# ======================================================
 def copy_csv(conn, table: str, csv_path: str, columns: list[str]) -> int:
+    """
+    copy_csv(conn, table: str, csv_path: str, columns: list[str]) -> int
+
+    Load a CSV into a PostgreSQL table using COPY.
+
+    :param conn: psycopg connection.
+    :param table: Target PostgreSQL table name.
+    :param csv_path: Path to the CSV file.
+    :param columns: Ordered column list matching the CSV header.
+
+    :return: Number of inserted rows.
+
+    :raises FileNotFoundError: CSV file not found.
+    """
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Missing CSV: {csv_path}")
 
     collist = ", ".join(columns)
-    copy_sql = f"""
-        COPY {table} ({collist})
-        FROM STDIN WITH (FORMAT csv, HEADER true)
-    """
+    copy_sql = (
+        f"COPY {table} ({collist}) "
+        "FROM STDIN WITH (FORMAT csv, HEADER true)"
+    )
 
-    log(f"COPY → {table} ({collist}) from {csv_path}")
+    tiny_logger(f"COPY → {table} ({collist}) from {csv_path}")
     with conn.cursor() as cur, open(csv_path, "r", encoding="utf-8") as f:
         with cur.copy(copy_sql) as cp:
             cp.write(f.read())
@@ -57,23 +61,40 @@ def copy_csv(conn, table: str, csv_path: str, columns: list[str]) -> int:
     return rowcount
 
 
-# ======================================================
-# Truncate all target tables before load
-# ======================================================
-def truncate_all(conn):
-    log("Truncating all target tables...")
+def truncate_all(conn) -> None:
+    """
+    truncate_all(conn) -> None
+
+    Truncate all target tables and reset identity sequences.
+
+    :param conn: psycopg connection.
+    """
+    tiny_logger("Truncating all target tables...")
     with conn.cursor() as cur:
-        cur.execute("TRUNCATE log_access_detail, log_entry, log_type, action_type RESTART IDENTITY;")
+        cur.execute(
+            "TRUNCATE log_access_detail, log_entry, "
+            "log_type, action_type RESTART IDENTITY;"
+        )
     conn.commit()
-    log("Truncate complete.\n")
+    tiny_logger("Truncate complete.\n")
 
 
-
-# ======================================================
-# Main loader
-# ======================================================
 def main() -> None:
-    log("Connecting to PostgreSQL...")
+    """
+    main() -> None
+
+    Execute the full ingestion pipeline:
+
+      1. Connect to PostgreSQL.
+      2. Truncate tables.
+      3. COPY log_type.
+      4. COPY action_type.
+      5. COPY log_entry.
+      6. COPY log_access_detail.
+
+    Connection parameters are read from environment variables.
+    """
+    tiny_logger("Connecting to PostgreSQL...")
 
     conn = psycopg.connect(
         dbname=os.getenv("PGDATABASE", "logdb"),
@@ -86,23 +107,9 @@ def main() -> None:
     try:
         truncate_all(conn)
 
-        # 1. Load log_type (id, name)
-        copy_csv(
-            conn,
-            "log_type",
-            LOG_TYPE_CSV,
-            ["id", "name"]
-        )
+        copy_csv(conn, "log_type", LOG_TYPE_CSV, ["id", "name"])
+        copy_csv(conn, "action_type", ACTION_TYPE_CSV, ["id", "name"])
 
-        # 2. Load action_type (id, name)
-        copy_csv(
-            conn,
-            "action_type",
-            ACTION_TYPE_CSV,
-            ["id", "name"]
-        )
-
-        # 3. Load log_entry
         copy_csv(
             conn,
             "log_entry",
@@ -115,11 +122,10 @@ def main() -> None:
                 "source_ip",
                 "dest_ip",
                 "block_id",
-                "size_bytes"
-            ]
+                "size_bytes",
+            ],
         )
 
-        # 4. Load access detail
         copy_csv(
             conn,
             "log_access_detail",
@@ -132,12 +138,12 @@ def main() -> None:
                 "resource",
                 "http_status",
                 "referrer",
-                "user_agent"
-            ]
+                "user_agent",
+            ],
         )
 
-        log("== DONE ==")
-        log("All tables loaded successfully.")
+        tiny_logger("== DONE ==")
+        tiny_logger("All tables loaded successfully.")
 
     finally:
         conn.close()
