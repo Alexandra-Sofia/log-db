@@ -10,9 +10,3 @@ class UserQueryLog(models.Model):
 
     class Meta:
         db_table = "user_query_log"
-
-class LogType(models.Model):
-    id = models.SmallIntegerField(primary_key=True,default=Value("nextval('log_type_id_seq'::regclass)"))
-    name = models.TextField()
-    class Meta:
-        db_table = "log_type"

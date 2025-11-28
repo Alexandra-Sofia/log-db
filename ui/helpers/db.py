@@ -1,6 +1,5 @@
 import time
 from .queries import hasQuery, getQuery
-from ..models import LogType # Assuming you have a model named LogEntry
 from django.db import connection, DatabaseError
 OMMITED_PARAMS = ['csrfmiddlewaretoken', 'query']
 
