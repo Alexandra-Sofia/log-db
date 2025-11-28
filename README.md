@@ -1,35 +1,38 @@
-# LogDB Ingestion & Parsing Pipeline
+# LogDB Ingestion & Quering Pipeline
 
-LogDB is a high‑performance log ingestion, parsing, and database loading pipeline designed for large heterogenous server logs. It provides a complete end‑to‑end workflow that parses raw log files (ACCESS, HDFS DataXceiver, HDFS NameSystem), normalizes them into structured CSVs, and ingests them into PostgreSQL using either batch inserts or COPY.
-
-This README describes:
-- System architecture
+This README covers:
 - Directory structure
+- Schema overview (link to separate documentation)
 - Parsing logic
 - File formats
 - Ingestion workflow
 - Docker Compose usage
-- Schema overview
+- Web UI overview
 - Development notes
 
 ---
 
 ## 1. Overview
 
-LogDB automates the ingestion of three major log categories:
+LogDB aims to achieve a high‑performance log ingestion, parsing, and database loading pipeline designed for large heterogenous server logs. 
+It provides a complete end‑to‑end workflow that parses raw log files (ACCESS, HDFS DataXceiver, HDFS NameSystem), 
+normalizes them into structured CSVs, and ingests them into PostgreSQL using Postgresql COPY. 
+
+LogDB automates the processing of three major log categories:
 
 1. **Apache/HTTP ACCESS logs**
 2. **HDFS DataXceiver logs**
 3. **HDFS NameSystem logs**
 
 The system:
-- Parses logs using parallel worker processes
-- Normalizes log types and actions
-- Generates deterministic UUIDs for action types
-- Creates temporary structured CSVs
-- Supports fast ingestion via PostgreSQL `COPY`
+- Parses logs using parallel worker processes.
+- Normalizes log types and actions.
+- Generates deterministic UUIDs for action types.
+- Creates temporary structured CSVs.
+- Supports fast ingestion via PostgreSQL `COPY`.
+- Deploys a web ui that executes pre-defined queries over the log data. 
 
-The tool is fully containerized and runs inside Docker Compose.
+The pipeline is fully containerized and gets deployed via Docker Compose.
 
 ---
 
@@ -40,13 +43,15 @@ The tool is fully containerized and runs inside Docker Compose.
 ├── Dockerfile
 ├── README.md
 ├── db
+│   ├── ERD.jpg                 -- Darabase schema visualization
 │   ├── init.sql                -- Original sql schema loaded during docker compose.
-│   └── my-queries.txt          -- Simple storage of queries, not used just for archival purposes.
+│   ├── my-queries.txt          -- Simple storage of queries, not used just for archival purposes.
+│   └── README.md               -- Schema related documentation.
 ├── docker-compose.yml      
 ├── ingest                      -- Implementation of ingestion step and corresponding dockerised service.
 │   ├── Dockerfile
 │   ├── __init__.py
-│   ├── batch_insertion/        -- Batch insertion scripts, not used only stored for performance evaluation and archival purposes.
+│   ├── batch_insertion/        -- Batch insertion scripts, not used only kept for performance evaluation and archival purposes.
 │   ├── *.py                    -- Generic parse step implementation scripts.
 │   ├── wait_for_postgres.sh    -- Shell script that waits for the postgresql container to be up and running, before executing ingest step.
 │   └── workers/                -- Dedicated parsers for each specific logfile type.
@@ -60,7 +65,13 @@ The tool is fully containerized and runs inside Docker Compose.
 
 ---
 
-## 3. Parsing Architecture
+## 3. PostgreSQL Schema Model representation
+
+The schema is described thoroughly in a separate (readme.md)[./db/README.md]
+
+---
+
+## 4. Parsing Architecture
 
 The parser runs **3 separate worker processes** in parallel:
 
@@ -73,9 +84,6 @@ The parser runs **3 separate worker processes** in parallel:
 Workers write CSVs into `parsed/tmp/` inside the ingest docker container.
 
 When all workers complete, the parent process merges outputs into final CSVs.
----
-
-## 4. Unified Log Model
 
 Final CSV output includes:
 
@@ -130,9 +138,9 @@ Produces CSVs in `parsed/`.
 python load.py 
 ```
 
-Two impelented methods:
+Two different approaches were implemented:
 
-#### 1. COPY (fastest, currently in use)
+#### 1. Postgres COPY from .csv (fastest, currently in use)
 ```
 COPY log_type FROM 'log_type.csv' CSV HEADER;
 COPY action_type FROM 'action_type.csv' CSV HEADER;
@@ -145,22 +153,12 @@ Uses psycopg2 `execute_values` with 100k batches.
 
 ---
 
-## 6. PostgreSQL Schema (Optimized)
-
-- Normalized lookup tables
-- Separate ACCESS detail table
-- High‑performance indexes
-- COPY‑friendly structure
-- ERM schema provided additionally
-
----
-
-## 7. Django webapp
+## 6. Django webapp
 
 The app follows Django’s standard project layout and keeps to the default boilerplate wherever possible.
 The Web UI supports:
 - Registration and sign in of new users using django built-in authentication service.
-- Dropdown menu of the 14 possible interactions with the database executing the stored functions:
+- Dropdown menu of the 15 possible interactions with the database executing the stored functions:
   - fn_total_logs_per_action_type
   - fn_logs_per_day_for_action
   - fn_most_common_action_per_source_ip
@@ -175,15 +173,20 @@ The Web UI supports:
   - fn_ips_with_two_methods_in_range
   - fn_ips_with_n_methods_in_range
   - fn_insert_new_log
+  - Find all executed queries (Not a stored function because it 
+  has a dependency on Django auth_user table which is not present during the deployment of init.sql)
 - Each option of the dropdown menu offers the placeholders for its corresponding functions parameters.
-- For every query executed by the UI, a new column is inserted in the user_query_log table.
-- 
+- For every query executed by the UI, a new row is inserted in the user_query_log table.
 
+---
 ## 7. Docker Compose Usage
 
+All the necessary services for the 
+
 ```
-docker compose up --build
+docker compose up [--build]
 ```
+(--build is optional, used for fresh deployments.)
 
 Services:
 - `postgres`:  backend database
@@ -192,40 +195,32 @@ Services:
 
 ---
 
-## 10. Queries Supported
+## 8. Development notes
 
-The schema supports all 13 assignment queries, and also the insertion of a log entry with new data.
+### Deployment
+- The django container occasionally fails due to an inconsistent and hard to replicate bug. In this case docker compose needs to be restarted and it works successfully.
+- The db volume is persistent. For fresh deployments execute `docker compose down -v` before `docker compose up --build`.
+- All three log files need to be manually copied to the input directory.
 
-Indexes ensure efficient execution.
-
----
-
-## 11. Limitations & Notes
-
-### Deployment issues
-- The django container occasionally fails due to a bug, so docker compose needs to be restarted.
-- The db volume is persistent. For fresh deployments execute `docker compose down -v`
-- Requires all three log files present
-
-### Design limitations
-- ACCESS details exist only for ACCESS logs
+### Design 
+- ACCESS details exist only for ACCESS logs.
 - Overhead for supporting new log files is relatively small. Implementation needs:
   - New regex definition for parsing.
   - New worker for parsing the input logfile.
   - Mapping of new log data columns to the log_entry table and creation of new dedicated details table for unique columns.
-  - Extention of load.py to COPY the data for the new details table.
+  - Extension of load.py to COPY the data for the new details table.
 
 ---
 
-## 12. License
+## 9. License
 
 Internal academic project. No license.
 
 ---
 
-## 13. Author
+## 10. Author
 
-LogDB ingestion & parsing engine + Django web interface,  
-Developed by Sofia, Alexandra 
+PostgresSQL Schema Design, LogDB ingestion & parsing engine, Django web UI
+developed by Sofia, Alexandra 
 2025
 
