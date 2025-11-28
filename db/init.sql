@@ -606,27 +606,4 @@ BEGIN
 END;
 $$;
 
-
-CREATE OR REPLACE FUNCTION log_user_query(
-    p_user_id INTEGER,         -- Maps to the first argument in [1, sql, parameters]
-    p_query_text TEXT,         -- Maps to the second argument in [1, sql, parameters]
-    p_params TEXT              -- Maps to the third argument in [1, sql, parameters]
-)
-RETURNS VOID                 -- Returns nothing, as it only performs an insert
-LANGUAGE sql
-AS $$
-    INSERT INTO user_query_log (
-        user_id,             -- The ForeignKey field in the Django model
-        query_text,
-        params,
-        executed_at
-    )
-    VALUES (
-        p_user_id,
-        p_query_text,
-        p_params,
-        NOW()                -- Use NOW() to record the execution time
-    );
-$$;
-
 COMMIT;

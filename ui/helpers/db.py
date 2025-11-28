@@ -78,7 +78,8 @@ STORED_PROCEDURES = {
     },
     'log_user_query': {
         'admin': True,
-        'sql': "SELECT 'done' from log_user_query(%s, %s, %s)",
+        'sql': 'INSERT INTO user_query_log (user_id, query_text, params, executed_at)' +
+                'VALUES (%s, %s, %s, NOW())',
     }
 }
 
