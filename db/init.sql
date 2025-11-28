@@ -393,8 +393,8 @@ $$;
 
 -- Q10. Access logs that specified a particular browser pattern
 --       (e.g., '%Mozilla/6.0%'), joined entry + access detail
-CREATE OR REPLACE FUNCTION fn_access_logs_by_user_agent_pattern(
-    p_pattern TEXT
+CREATE OR REPLACE FUNCTION fn_access_logs_by_user_agent_version(
+    p_version TEXT
 )
 RETURNS TABLE(
     id              TEXT,
@@ -435,7 +435,7 @@ SELECT
 FROM log_entry le
 JOIN log_access_detail lad
   ON le.id = lad.log_entry_id
-WHERE lad.user_agent ILIKE p_pattern;
+WHERE lad.user_agent ILIKE ('%Mozilla/' || p_version || '%');
 $$;
 
 
@@ -518,6 +518,104 @@ WHERE lt.name = p_log_type_name
 GROUP BY le.source_ip
 HAVING COUNT(DISTINCT at.name) = p_required_methods
 ORDER BY cnt DESC;
+$$;
+
+
+CREATE OR REPLACE FUNCTION fn_insert_log(
+    p_log_type_name     TEXT,
+    p_action_type_name  TEXT,
+    p_log_timestamp     TIMESTAMPTZ,
+    p_source_ip         INET,
+    p_dest_ip           INET,
+    p_block_id          BIGINT,
+    p_size_bytes        BIGINT,
+
+    -- ACCESS–specific optional fields:
+    p_remote_name       TEXT DEFAULT NULL,
+    p_auth_user         TEXT DEFAULT NULL,
+    p_http_method       TEXT DEFAULT NULL,
+    p_resource          TEXT DEFAULT NULL,
+    p_http_status       INT  DEFAULT NULL,
+    p_referrer          TEXT DEFAULT NULL,
+    p_user_agent        TEXT DEFAULT NULL
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_log_type_id     SMALLINT;
+    v_action_type_id  UUID;
+    v_new_id          TEXT;
+BEGIN
+    -- Look up log_type
+    SELECT id INTO v_log_type_id
+    FROM log_type
+    WHERE name = p_log_type_name;
+
+    IF v_log_type_id IS NULL THEN
+        RAISE EXCEPTION 'Unknown log_type: %', p_log_type_name;
+    END IF;
+
+    -- Look up action_type
+    SELECT id INTO v_action_type_id
+    FROM action_type
+    WHERE name = p_action_type_name;
+
+    IF v_action_type_id IS NULL THEN
+        RAISE EXCEPTION 'Unknown action_type: %', p_action_type_name;
+    END IF;
+
+    -- Generate text primary key (consistent with your schema)
+    v_new_id := encode(gen_random_bytes(16), 'hex');
+
+    -- Insert into main log_entry
+    INSERT INTO log_entry (
+        id,
+        log_type_id,
+        action_type_id,
+        log_timestamp,
+        source_ip,
+        dest_ip,
+        block_id,
+        size_bytes
+    )
+    VALUES (
+        v_new_id,
+        v_log_type_id,
+        v_action_type_id,
+        p_log_timestamp,
+        p_source_ip,
+        p_dest_ip,
+        p_block_id,
+        p_size_bytes
+    );
+
+    -- If it's an ACCESS type, insert into log_access_detail
+    IF p_log_type_name = 'ACCESS' THEN
+        INSERT INTO log_access_detail (
+            log_entry_id,
+            remote_name,
+            auth_user,
+            http_method,
+            resource,
+            http_status,
+            referrer,
+            user_agent
+        )
+        VALUES (
+            v_new_id,
+            p_remote_name,
+            p_auth_user,
+            p_http_method,
+            p_resource,
+            p_http_status,
+            p_referrer,
+            p_user_agent
+        );
+    END IF;
+
+    RETURN v_new_id;
+END;
 $$;
 
 COMMIT;

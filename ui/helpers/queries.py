@@ -1,114 +1,111 @@
 QUERY_DICTIONARY = {
     "01": {
         "title": "Find the total logs per type that were created within a specified time range in descending order",
-        "params": {
-            "timeRange": "timeRange"
+        "htmlInputs": {
+            "time_range": "required"
         },
-        "template": "template01",
-        "description": "description"
+        "storedProcedure": "storedProcedure01"
     },
     "02": {
         "title": "Find the total logs per day for a specific action type and time range",
-        "params": {
-            "actionType": "string",
-            "timeRange": "timeRange"
+        "htmlInputs": {
+            "action_type": "required",
+            "time_range": "required"
         },
-        "template": "template02",
-        "description": "description"
+        "storedProcedure": "storedProcedure02",
     },
     "03": {
         "title": "Find the most common log per source IP for a specific day",
-        "params": {
-            "day": "date"
+        "htmlInputs": {
+            "day": "required"
         },
-        "template": "template03",
-        "description": "description"
+        "storedProcedure": "storedProcedure03"
     },
     "04": {
         "title": "Find the top-5 Block IDs with regards to total number of actions per day for a specific day range",
-        "params": {
-            "dayRange": "dayRange"
+        "htmlInputs": {
+            "dayRange": "required"
         },
-        "template": "template04",
-        "description": "description"
+        "storedProcedure": "storedProcedure04"
     },
     "05": {
         "title": "Find the referrers (if any) that have led to more than one resources",
-        "params": {},
-        "template": "template05",
-        "description": "description"
+        "htmlInputs": {},
+        "storedProcedure": "storedProcedure05"
     },
     "06": {
         "title": "Find the 2nd most common resource requested",
-        "params": {},
-        "template": "template06",
-        "description": "description"
+        "htmlInputs": {},
+        "storedProcedure": "storedProcedure06"
     },
     "07": {
         "title": "Find the access log (all fields) where the size is less than a specified number",
-        "params": {
-            "size_bytes": "number"
+        "htmlInputs": {
+            "size_bytes": "required"
         },
-        "template": "template07",
-        "description": "description"
+        "storedProcedure": "storedProcedure07"
     },
     "08": {
         "title": "Find the blocks that have been replicated the same day that they have also been served",
-        "params": {},
-        "template": "template08",
-        "description": "description"
+        "htmlInputs": {},
+        "storedProcedure": "storedProcedure08"
     },
     "09": {
         "title": "Find the blocks that hae been replicated the same day and hour that they have also been served",
-        "params": {},
-        "template": "template09",
-        "description": "description"
+        "htmlInputs": {},
+        "storedProcedure": "storedProcedure09"
     },
     "10": {
         "title": "Find access logs that specified a particular version of Firefox as their browser",
-        "params": {},
-        "template": "template10",
-        "description": "description"
+        "htmlInputs": {
+            "version": "required"
+        },
+        "storedProcedure": "storedProcedure10"
     },
     "11": {
         "title": "Find IPs that have issued a particular HTTP method on a particular time range",
-        "params": {
-            "timeRange": "timeRange"
+        "htmlInputs": {
+            "action_type": "required",
+            "time_range": "required"
         },
-        "template": "template11",
-        "description": "description"
+        "storedProcedure": "storedProcedure11"
     },
     "12": {
         "title": "Find IPs that have issued two particular HTTP methods on a particular time range",
-        "params": {
-            "timeRange": "timeRange"
+        "htmlInputs": {
+            "action_type": "required",
+            "action_type_2": "required",
+            "time_range": "required"
         },
-        "template": "template12",
-        "description": "description"
+        "storedProcedure": "storedProcedure12"
     },
     "13": {
         "title": "Find IPs that have issued any four distinct HTTP methods on a particular time range",
-        "params": {
-            "timeRange": "timeRange"
+        "htmlInputs": {
+            "time_range": "required"
         },
-        "template": "template13",
-        "description": "description"
+        "storedProcedure": "storedProcedure13"
     },
     "14": {
         "title": "Input a log entry with following data",
-        "params": {
-            "log_type": "string",
-            "action_type": "string",
-            "timestamp": "timestamp",
-            "source_ip": "string",
-            "destination_ip": "string",
-            "block_id": "number",
-            "size_bytes": "number",
+        "htmlInputs": {
+            "log_type": "required",
+            "action_type": "required",
+            "timestamp": "required",
+            "source_ip": "required",
+            "destination_ip": "required",
+            "block_id": "required",
+            "size_bytes": "required",
+
+            "remote_name": "optional",
+            "auth_user": "optional",
+            "resource": "optional",
+            "http_status": "optional",
+            "referrer": "optional",
+            "user_agent": "optional"
         },
-        "template": "template14",
-        "query": "SELECT * FROM log_types",
-        "description": "description"
-    }
+        "storedProcedure": "fn_insert_log"
+    },
 }
 
 def hasQuery(request): 

@@ -6,30 +6,32 @@
     </div>
 
     {% if selectedQuery %}
-        <h2>Query</h2>
-        <div>title: {{selectedQuery.title}}</div>
-        <div>template: {{selectedQuery.template}}</div>
-        <div>description: {{selectedQuery.description}}</div>
-        <h2>Query expected params</h2>
-        <div>{{selectedQuery.params}}</div>
-
+        <h2>{{selectedQuery.title}}</h2>
         {% if queryParams %}
-        <h2>Query params - should get only the first one</h2>
         <div>{{queryParams}}</div>
         {% endif %}
-
         {% if results %}
-            <h2>Query results</h2>
-            <div>{{results}}</div>
-            {% for result in results.data.values %}
+            <h3>results</h3>
+            {% for result in results %}
+            {% if forloop.first %}
             <div class="row border">
-                {{result}}
+                {% for key in result.keys %}
+                <div class="col border">
+                    {{key}}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="row border">
+                {% for key, column in result.items %}
+                <div class="col border">
+                    {{column}}
+                </div>
+                {% endfor %}
             </div>
             {% endfor %}
         {% endif %}
-        
     {% endif %}
-
 {% endblock content %}
 
 {% block scripts %}

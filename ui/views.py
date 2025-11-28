@@ -1,7 +1,6 @@
 import psycopg2
 
 from django.shortcuts import render, redirect
-from .util.logger import logger
 from django.contrib.auth import login, logout
 from ui.forms import CustomLoginForm, CustomUserCreationForm
 from .helpers.all import isUserLoggedIn, hasQuery, getQueriesDictionary, executeQueryAndGetResults, getContext
