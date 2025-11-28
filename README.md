@@ -42,22 +42,8 @@ The tool is fully containerized and runs inside Docker Compose.
 │   ├── access_log_full
 │   ├── HDFS_DataXceiver.log
 │   └── HDFS_FS_Namesystem.log
-│
-├── parsed/
-│   ├── log_type.csv
-│   ├── action_type.csv
-│   ├── log_entry.csv
-│   ├── log_access_detail.csv
-│   └── tmp/
-│       ├── log_entry_access.csv
-│       ├── access_detail_access.csv
-│       ├── log_entry_datax.csv
-│       ├── log_entry_namesys.csv
-│       ├── action_types_access.csv
-│       ├── action_types_datax.csv
-│       └── action_types_namesys.csv
-│
-├── app/
+││
+├── logdb_web/
 │   ├── parser/
 │   ├── ingest/
 │   └── util/
@@ -234,6 +220,7 @@ Indexes ensure efficient execution.
 - Deterministic UUIDs must remain unchanged
 - CSVs must preserve headers when using COPY
 - ACCESS details exist only for ACCESS logs
+- The django container occasionally fails due to a bug, so docker compose needs to be restarted.
 
 ---
 
@@ -246,6 +233,6 @@ Internal academic project. No license.
 ## 13. Author
 
 LogDB ingestion & parsing engine  
-Developed by Collaborator Alex  
+Developed by Alexandra Sofia
 2025
 
