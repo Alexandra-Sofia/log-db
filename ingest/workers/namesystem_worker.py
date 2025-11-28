@@ -1,5 +1,7 @@
 import csv
 import re
+from typing import Dict, Set, Any
+
 from timestamps import ts_hdfs_compact
 from ids import load_log_type_ids, deterministic_action_type_id
 from writers import write_entry
@@ -18,7 +20,7 @@ NAMESYS_UPDATE_REGEX = re.compile(
     blk_(?P<block>-?\d+)
     (?:\s+size\s+(?P<size>\d+))?
     $''',
-    re.VERBOSE
+    re.VERBOSE,
 )
 
 NAMESYS_ASK_REPLICATE_REGEX = re.compile(
@@ -33,72 +35,155 @@ NAMESYS_ASK_REPLICATE_REGEX = re.compile(
     \s+to\s+datanode\(s\)\s+
     (?P<dest_list>(?:[0-9.]+:\d+\s*)+)
     $''',
-    re.VERBOSE
+    re.VERBOSE,
 )
 
-def parse_namesystem_worker(input_path, tmp_entry_path):
-    LOG_TYPE_IDS = load_log_type_ids()
-    action_type_names = set()
+
+def parse_namesystem_worker(
+    input_path: str,
+    tmp_entry_path: str,
+) -> None:
+    """
+    Parse HDFS FSNamesystem logs and write temporary ``log_entry`` rows
+    and a corresponding temporary ``action_types`` CSV.
+
+    Supported operations:
+      update, replicate
+
+    :param input_path: Path to the raw Namesystem log file.
+    :param tmp_entry_path: Output CSV path for temporary log_entry rows.
+    :return: None
+    """
+    log_type_ids = load_log_type_ids()
+    action_type_names: Set[str] = set()
 
     with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv:
-        w_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
-        w_entry.writeheader()
+        writer_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
+        writer_entry.writeheader()
 
-        with open(input_path, encoding="utf-8") as f:
-            for raw in f:
-                line = raw.rstrip("\n")
+        with open(input_path, encoding="utf-8") as infile:
+            for raw_line in infile:
+                line = raw_line.rstrip("\n")
 
-                upd = NAMESYS_UPDATE_REGEX.match(line)
-                if upd:
-                    g = upd.groupdict()
-                    ts = ts_hdfs_compact(g["date"], g["time"])
-                    action = "update"
-                    action_type_names.add(action)
-                    write_entry(
-                        w_entry,
-                        LogType.HDFS_NAMESYSTEM,
-                        deterministic_action_type_id(action),
-                        ts,
-                        g["ip"],
-                        "",
-                        int(g["block"]),
-                        int(g["size"]) if g.get("size") else "",
-                        {},
-                        LOG_TYPE_IDS,
+                match_update = NAMESYS_UPDATE_REGEX.match(line)
+                if match_update:
+                    add_update(
+                        writer_entry,
+                        match_update.groupdict(),
+                        log_type_ids,
+                        action_type_names,
                     )
                     continue
 
-                rep = NAMESYS_ASK_REPLICATE_REGEX.match(line)
-                if rep:
-                    g = rep.groupdict()
-                    ts = ts_hdfs_compact(g["date"], g["time"])
-                    src_ip = g["src_ip"]
-                    block_id = int(g["block"])
-                    action = "replicate"
-                    action_type_names.add(action)
+                match_repl = NAMESYS_ASK_REPLICATE_REGEX.match(line)
+                if match_repl:
+                    add_replicate(
+                        writer_entry,
+                        match_repl.groupdict(),
+                        log_type_ids,
+                        action_type_names,
+                    )
 
-                    for tok in g["dest_list"].split():
-                        if ":" not in tok:
-                            continue
-                        dest_ip = tok.split(":", 1)[0]
+    write_action_types(tmp_entry_path, action_type_names)
 
-                        write_entry(
-                            w_entry,
-                            LogType.HDFS_NAMESYSTEM,
-                            deterministic_action_type_id(action),
-                            ts,
-                            src_ip,
-                            dest_ip,
-                            block_id,
-                            "",
-                            {},
-                            LOG_TYPE_IDS,
-                        )
 
-    # Save actions
-    at_path = tmp_entry_path.replace("log_entry", "action_types")
-    with open(at_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "name"])
+def add_update(
+    writer_entry: csv.DictWriter,
+    fields: Dict[str, Any],
+    log_type_ids: Dict[LogType, int],
+    action_type_names: Set[str],
+) -> None:
+    """
+    Write an ``update`` log_entry row.
+
+    :param writer_entry: CSV DictWriter for log_entry rows.
+    :param fields: Matched regex field dictionary.
+    :param log_type_ids: Mapping of LogType to numeric IDs.
+    :param action_type_names: Set collecting unique actions.
+    :return: None
+    """
+    action = "update"
+    action_type_names.add(action)
+
+    timestamp = ts_hdfs_compact(fields["date"], fields["time"])
+    size_value = int(fields["size"]) if fields.get("size") else ""
+
+    write_entry(
+        writer_entry,
+        LogType.HDFS_NAMESYSTEM,
+        deterministic_action_type_id(action),
+        timestamp,
+        fields["ip"],
+        "",
+        int(fields["block"]),
+        size_value,
+        {},
+        log_type_ids,
+    )
+
+
+def add_replicate(
+    writer_entry: csv.DictWriter,
+    fields: Dict[str, Any],
+    log_type_ids: Dict[LogType, int],
+    action_type_names: Set[str],
+) -> None:
+    """
+    Write one or more ``replicate`` log_entry rows,
+    one per destination datanode.
+
+    :param writer_entry: CSV DictWriter for log_entry rows.
+    :param fields: Matched regex field dictionary.
+    :param log_type_ids: Mapping of LogType to numeric IDs.
+    :param action_type_names: Set collecting unique actions.
+    :return: None
+    """
+    action = "replicate"
+    action_type_names.add(action)
+
+    timestamp = ts_hdfs_compact(fields["date"], fields["time"])
+    src_ip = fields["src_ip"]
+    block_id = int(fields["block"])
+
+    for token in fields["dest_list"].split():
+        if ":" not in token:
+            continue
+
+        dest_ip = token.split(":", 1)[0]
+
+        write_entry(
+            writer_entry,
+            LogType.HDFS_NAMESYSTEM,
+            deterministic_action_type_id(action),
+            timestamp,
+            src_ip,
+            dest_ip,
+            block_id,
+            "",
+            {},
+            log_type_ids,
+        )
+
+
+def write_action_types(
+    tmp_entry_path: str,
+    action_type_names: Set[str],
+) -> None:
+    """
+    Write the unique Namesystem action types into a temporary CSV.
+
+    :param tmp_entry_path: Path of the temporary log_entry CSV.
+    :param action_type_names: Set of unique action names.
+    :return: None
+    """
+    output_path = tmp_entry_path.replace("log_entry", "action_types")
+
+    with open(output_path, "w", newline="", encoding="utf-8") as outfile:
+        writer = csv.DictWriter(outfile, fieldnames=["id", "name"])
         writer.writeheader()
+
         for name in sorted(action_type_names):
-            writer.writerow({"id": deterministic_action_type_id(name), "name": name})
+            writer.writerow({
+                "id": deterministic_action_type_id(name),
+                "name": name,
+            })
