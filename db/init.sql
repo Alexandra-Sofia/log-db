@@ -101,7 +101,6 @@ CREATE TABLE IF NOT EXISTS log_access_detail (
 
     remote_name  TEXT,
     auth_user    TEXT,
-    http_method  TEXT,
     resource     TEXT,
     http_status  INT,
     referrer     TEXT,
@@ -114,9 +113,6 @@ CREATE TABLE IF NOT EXISTS log_access_detail (
 );
 
 -- Indexes for HTTP and browser queries (Q5, Q6, Q7, Q10)
-CREATE INDEX IF NOT EXISTS idx_access_method
-    ON log_access_detail (http_method);
-
 CREATE INDEX IF NOT EXISTS idx_access_resource
     ON log_access_detail (resource);
 
@@ -336,7 +332,6 @@ RETURNS TABLE(
     size_bytes      BIGINT,
     remote_name     TEXT,
     auth_user       TEXT,
-    http_method     TEXT,
     resource        TEXT,
     http_status     INT,
     referrer        TEXT,
@@ -356,7 +351,6 @@ SELECT
     le.size_bytes,
     lad.remote_name,
     lad.auth_user,
-    lad.http_method,
     lad.resource,
     lad.http_status,
     lad.referrer,
@@ -407,7 +401,6 @@ RETURNS TABLE(
     size_bytes      BIGINT,
     remote_name     TEXT,
     auth_user       TEXT,
-    http_method     TEXT,
     resource        TEXT,
     http_status     INT,
     referrer        TEXT,
@@ -427,7 +420,6 @@ SELECT
     le.size_bytes,
     lad.remote_name,
     lad.auth_user,
-    lad.http_method,
     lad.resource,
     lad.http_status,
     lad.referrer,
@@ -521,7 +513,8 @@ ORDER BY cnt DESC;
 $$;
 
 
-CREATE OR REPLACE FUNCTION fn_insert_log(
+
+CREATE OR REPLACE FUNCTION fn_insert_new_log(
     p_log_type_name     TEXT,
     p_action_type_name  TEXT,
     p_log_timestamp     TIMESTAMPTZ,
@@ -529,11 +522,8 @@ CREATE OR REPLACE FUNCTION fn_insert_log(
     p_dest_ip           INET,
     p_block_id          BIGINT,
     p_size_bytes        BIGINT,
-
-    -- ACCESS–specific optional fields:
-    p_remote_name       TEXT DEFAULT NULL,
+	p_remote_name       TEXT DEFAULT NULL,
     p_auth_user         TEXT DEFAULT NULL,
-    p_http_method       TEXT DEFAULT NULL,
     p_resource          TEXT DEFAULT NULL,
     p_http_status       INT  DEFAULT NULL,
     p_referrer          TEXT DEFAULT NULL,
@@ -566,7 +556,7 @@ BEGIN
     END IF;
 
     -- Generate text primary key (consistent with your schema)
-    v_new_id := encode(gen_random_bytes(16), 'hex');
+    v_new_id := gen_random_uuid();
 
     -- Insert into main log_entry
     INSERT INTO log_entry (
@@ -596,7 +586,6 @@ BEGIN
             log_entry_id,
             remote_name,
             auth_user,
-            http_method,
             resource,
             http_status,
             referrer,
@@ -606,7 +595,6 @@ BEGIN
             v_new_id,
             p_remote_name,
             p_auth_user,
-            p_http_method,
             p_resource,
             p_http_status,
             p_referrer,

@@ -1,3 +1,4 @@
+import time
 from .queries import hasQuery, getQuery
 from ..models import LogType # Assuming you have a model named LogEntry
 from django.db import connection, DatabaseError
@@ -57,18 +58,17 @@ STORED_PROCEDURES = {
         'parameters': ['start_time', 'end_time']
     },
     'fn_insert_log': {
-        'sql': 'SELECT fn_insert_log(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+        'sql': 'SELECT fn_insert_new_log(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
         'parameters': [
-            'log_type_name',
-            'action_type_name',
-            'log_timestamp',
+            'log_type',
+            'action_type',
+            'specific_timestamp',
             'source_ip',
-            'dest_ip',
+            'destination_ip',
             'block_id',
             'size_bytes',
             'remote_name',
             'auth_user',
-            'http_method',
             'resource',
             'http_status',
             'referrer',
@@ -117,11 +117,14 @@ def run_log_analyzer(query, params):
         sql = getStoredProcedure(query.get('storedProcedure'))
         parameters = []
         for key in getStoredProcedureParameters(query.get('storedProcedure')):
-            parameters.append(params.get(key))
+            parameters.append(params.get(key, 'null'))
     else:
         raise ValueError(f"Unknown query method: {query}")
     # remove to make the call
-    # return [{'sql': sql, 'parameters': parameters}]
+    # return {
+    #     'data': [{'sql': sql, 'parameters': parameters}],
+    #     'executionTimeInMs': 12314,
+    # }
     try:
         # 1. Obtain a cursor and execute the raw SQL
         with connection.cursor() as cursor:
@@ -131,9 +134,12 @@ def run_log_analyzer(query, params):
             
             # IMPORTANT: Use placeholders (%s) and pass parameters separately 
             # to prevent SQL Injection.
+            start_time = time.time()
             cursor.execute(sql, parameters)
+            end_time = time.time()
+            duration_ms = (end_time - start_time) * 1000
             
-            
+
             # 2. Fetch column names and results
             if cursor.description:
                 columns = [col[0] for col in cursor.description]
@@ -141,7 +147,10 @@ def run_log_analyzer(query, params):
                 
                 # 3. Map results to a list of dictionaries
                 results = [dict(zip(columns, row)) for row in data]
-                return results
+                return {
+                    'data': results,
+                    'executionTimeInMs': duration_ms
+                }
             else:
                 return [] # No results returned
 

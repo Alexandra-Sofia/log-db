@@ -11,8 +11,8 @@
         <div>{{queryParams}}</div>
         {% endif %}
         {% if results %}
-            <h3>results</h3>
-            {% for result in results %}
+            <h3>results in {{results.executionTimeInMs}}ms</h3>
+            {% for result in results.data %}
             {% if forloop.first %}
             <div class="row border">
                 {% for key in result.keys %}
