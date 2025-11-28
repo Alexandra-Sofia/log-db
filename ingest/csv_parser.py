@@ -62,13 +62,17 @@ ACTION_TYPE_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 # Regex patterns
 # ============================================================
 
+
 ACCESS_REGEX = re.compile(
-    r'(?P<ip>\S+) (?P<remote_name>\S+) (?P<auth_user>\S+) '
-    r'\[(?P<timestamp>.+?)\] '
-    r'"(?P<method>\S+) (?P<resource>\S+) \S+" '
-    r'(?P<status>\d{3}) '
-    r'(?P<size>\S+) '
-    r'"(?P<referrer>.*?)" "(?P<agent>.*?)"'
+    r'(?P<ip>\S+)\s+'
+    r'(?P<remote_name>\S+)\s+'
+    r'(?P<auth_user>\S+)\s+'
+    r'\[(?P<timestamp>[^]]+)\]\s+'
+    r'"(?P<method>[A-Za-z]+)\s+(?P<resource>[^"]+?)\s+HTTP/[^"]+"\s+'
+    r'(?P<status>\d{3})\s+'
+    r'(?P<size>\S+)\s+'
+    r'"(?P<referrer>[^"]*)"\s+'
+    r'"(?P<agent>[^"]*)"'
 )
 
 DATAX_REGEX = re.compile(
@@ -244,7 +248,6 @@ def parse_access_worker(input_path, tmp_entry_path, tmp_detail_path):
                     "user_agent": g["agent"],
                 })
 
-    # Save action types for parent (id, name via deterministic UUID)
     at_path = tmp_detail_path.replace("access_detail", "action_types")
     with open(at_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["id", "name"])
