@@ -80,6 +80,10 @@ STORED_PROCEDURES = {
         'admin': True,
         'sql': 'INSERT INTO user_query_log (user_id, query_text, params, executed_at)' +
                 'VALUES (%s, %s, %s, NOW())',
+    },
+    'get_user_query_log': {
+        'sql': 'SELECT * FROM user_query_log ' +
+                'ORDER BY executed_at DESC',
     }
 }
 
@@ -122,8 +126,9 @@ def run_log_analyzer(query, params, userid):
 
     sql = getStoredProcedure(query.get('storedProcedure'))
     parameters = []
-    for key in getStoredProcedureParameters(query.get('storedProcedure')):
-        parameters.append(params.get(key, 'null'))
+    if getStoredProcedureParameters(query.get('storedProcedure')) != None:
+        for key in getStoredProcedureParameters(query.get('storedProcedure')):
+            parameters.append(params.get(key, 'null'))
 
     try:
         # 1. Obtain a cursor and execute the raw SQL
@@ -152,7 +157,10 @@ def run_log_analyzer(query, params, userid):
                     'executionTimeInMs': duration_ms
                 }
 
-        return {}
+        return {
+                'data': {},
+                'executionTimeInMs': 10
+            }
 
     except DatabaseError as e:
         print(f"Database Error during SP execution: {e}")

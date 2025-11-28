@@ -11,14 +11,31 @@
           integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" 
           crossorigin="anonymous">
     <style>
-        main {
+        h1 { font-size: 24px; }
+        body {
+            font-size: 14px;
+        }
+        .main {
             display: block;
             min-height: 500px;
-            padding: 40px 0 100px!important;
+            padding: 0px 20px 100px!important;
             text-align: center;
         }
         .js-param-wrapper {
-            margin: 10px auto;
+            margin: 5px auto!important;
+            position: relative;
+        }
+        .js-param-wrapper:not(.indicator)::before {
+            content: ""; /* Required for pseudo-elements */
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            right: 5px;
+            bottom: 0px;
+            z-index: -1; 
+            pointer-events: none;
+            background-color: #f1f1f1; /* Sets the background color */
+            border-radius: 8px;
         }
         .back-menu{
             text-align: left;
@@ -26,7 +43,7 @@
     </style>
 </head>
 <body class="">
-    <header class="container container-fluid py-3">
+    <header class="container-fluid py-3">
         <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
             <div class="container-fluid">
                 
@@ -34,13 +51,6 @@
                     <h1>Logs Querying System</h1>
                 </a>
 
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
-                        data-bs-target="#navbarNav" aria-controls="navbarNav" 
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-
-                <div class="collapse navbar-collapse" id="navbarNav">
                     
                     <div class="d-flex ms-auto">
                         {% if isUserAuthenticated %}
@@ -54,13 +64,12 @@
                         {% endif %}
                     </div>
 
-                </div>
             </div>
         </nav>
     </header>
-    <main class="container container-fluid">
+    <div class="main justify-content-center container-fluid py-3">
             {% block content %}{% endblock content %}
-    </main>
+    </div>
     <footer class="footer mt-auto py-3 bg-light">
         <div class="container text-center">
             <span class="text-muted">© 2025 Sofia Alexandra. All rights reserved.</span>

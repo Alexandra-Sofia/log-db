@@ -3,11 +3,11 @@
 {% block content %}
 
 <div class="row justify-content-center"> 
-    <div class="col-lg-8 col-md-10">
+    <div class="py-3">
         <form id="query-form" method="POST" action="/askQuery" novalidate>
             {% csrf_token %}
 
-            <div class="d-flex align-items-center mb-4 p-3 bg-light rounded-3 shadow-sm">
+            <div class="align-items-center p-3 bg-light rounded-3 shadow-sm">
                 <div class="row g-3">
                     <label for="query-selector" class="form-label me-3 mb-0 text-muted fw-bold">Select a Query:</label>
                     <div class="col-md-12">
@@ -23,37 +23,26 @@
                     </div>
                 </div>
             </div>
-
+            <br/>
             <div id="dynamic-params-wrapper">
                 <div class="row g-3">
 
-                    <div id="time_range_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3 ">
-                        <h5>Time Range Parameters</h5>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="time_range-start" class="form-label">From Datetime</label>
-                                <input type="datetime-local" 
-                                    class="form-control" 
-                                    id="time_range-start" 
-                                    name="start_time"
-                                    data-param-type="time_range">
-                                <div class="invalid-feedback">Please provide the starting date and time.</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="time_range-end" class="form-label">To Datetime</label>
-                                <input type="datetime-local" 
-                                    class="form-control" 
-                                    id="time_range-end" 
-                                    name="end_time"
-                                    data-param-type="time_range">
-                                <div class="invalid-feedback">Please provide the ending date and time.</div>
-                            </div>
-                        </div>
+                    <div id="log_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="log_type-select" class="form-label">Log Type</label>
+                        <select class="form-select" 
+                                id="log_type-select"
+                                name="log_type" 
+                                data-param-type="log_type">
+
+                            <option value="" selected>-- Select a Log Type --</option>
+                            <option value="ACCESS">ACCESS</option>
+                            <option value="HDFS_DATAXCEIVER">HDFS_DATAXCEIVER</option>
+                            <option value="HDFS_NAMESYSTEM">HDFS_NAMESYSTEM</option>
+                        </select>
+                        <div class="invalid-feedback">A specific log type string is required.</div>
                     </div>
 
                     <div id="action_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Action Type Parameter</h5>
-                        
                         <label for="action_type-select" class="form-label">Action Type</label>
                         <select class="form-select" 
                                 id="action_type-select"
@@ -80,8 +69,6 @@
                     </div>
 
                     <div id="action_type_2_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Action Type Parameter</h5>
-
                         <label for="action_type_2-select" class="form-label">Action Type</label>
                         <select class="form-select"
                                 id="action_type_2-select"
@@ -107,8 +94,30 @@
                         <div class="invalid-feedback">A specific action type is required for this query.</div>
                     </div>
 
+                    <div id="time_range_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3 ">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="time_range-start" class="form-label">From Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="time_range-start" 
+                                    name="start_time"
+                                    data-param-type="time_range">
+                                <div class="invalid-feedback">Please provide the starting date and time.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="time_range-end" class="form-label">To Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="time_range-end" 
+                                    name="end_time"
+                                    data-param-type="time_range">
+                                <div class="invalid-feedback">Please provide the ending date and time.</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="day_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Single Day Parameter</h5>
                         <label for="day-input" class="form-label">Select Day</label>
                         <input type="date" 
                             class="form-control" 
@@ -119,7 +128,6 @@
                     </div>
 
                     <div id="dayRange_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Day Range Parameters</h5>
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label for="dayRange-start" class="form-label">From Date</label>
@@ -143,7 +151,6 @@
                     </div>
 
                     <div id="block_id_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Block ID Parameter</h5>
                         <label for="block_id-input" class="form-label">Block ID</label>
                         <input type="text"
                             class="form-control" 
@@ -156,92 +163,7 @@
                         </div>
                     </div>
 
-                    <div id="remote_name_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Remote name Parameter</h5>
-                        <label for="remote_name-input" class="form-label">Remote name</label>
-                        <input type="text"
-                            class="form-control"
-                            id="remote_name-input"
-                            name="remote_name"
-                            placeholder="e.g., "
-                            data-param-type="remote_name">
-                        <div class="invalid-feedback">
-                            A Remote name is required.
-                        </div>
-                    </div>
-
-                    <div id="auth_user_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Auth user Parameter</h5>
-                        <label for="auth_user-input" class="form-label">Auth user</label>
-                        <input type="text"
-                            class="form-control"
-                            id="auth_user-input"
-                            name="auth_user"
-                            placeholder="e.g., "
-                            data-param-type="auth_user">
-                        <div class="invalid-feedback">
-                            An auth user is required.
-                        </div>
-                    </div>
-
-                    <div id="resource_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Resource Parameter</h5>
-                        <label for="resource-input" class="form-label">Resource</label>
-                        <input type="text"
-                            class="form-control"
-                            id="resource-input"
-                            name="resource"
-                            placeholder="e.g., "
-                            data-param-type="resource">
-                        <div class="invalid-feedback">
-                            A resource is required.
-                        </div>
-                    </div>
-
-                    <div id="http_status_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>http_status Parameter</h5>
-                        <label for="http_status-input" class="form-label">http_status</label>
-                        <input type="number"
-                            class="form-control"
-                            id="http_status-input"
-                            name="http_status"
-                            placeholder="e.g., "
-                            data-param-type="http_status">
-                        <div class="invalid-feedback">
-                            A http_status is required.
-                        </div>
-                    </div>
-
-                    <div id="referrer_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>referrer Parameter</h5>
-                        <label for="referrer-input" class="form-label">referrer</label>
-                        <input type="text"
-                            class="form-control"
-                            id="referrer-input"
-                            name="referrer"
-                            placeholder="e.g., "
-                            data-param-type="referrer">
-                        <div class="invalid-feedback">
-                            A referrer is required.
-                        </div>
-                    </div>
-
-                    <div id="user_agent_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>user_agent Parameter</h5>
-                        <label for="user_agent-input" class="form-label">user_agent</label>
-                        <input type="text"
-                            class="form-control"
-                            id="user_agent-input"
-                            name="user_agent"
-                            placeholder="e.g., "
-                            data-param-type="user_agent">
-                        <div class="invalid-feedback">
-                            A user_agent is required.
-                        </div>
-                    </div>
-
                     <div id="version_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Version Parameter</h5>
                         <label for="version-input" class="form-label">Firefox version</label>
                         <input type="text"
                             class="form-control"
@@ -255,7 +177,6 @@
                     </div>
 
                     <div id="size_bytes_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Size (Bytes) Parameter</h5>
                         <label for="size_bytes-input" class="form-label">Minimum Size (Bytes)</label>
                         <input type="number" 
                             class="form-control" 
@@ -269,7 +190,6 @@
                     </div>
 
                     <div id="timestamp_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Specific Timestamp</h5>
                         <label for="timestamp-input" class="form-label">Specific Date & Time</label>
                         <input type="datetime-local" 
                             class="form-control" 
@@ -280,24 +200,8 @@
                             Please select a specific date and time for the query.
                         </div>
                     </div>
-                    <div id="log_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Log Type Parameter</h5>
-                        <label for="log_type-select" class="form-label">Log Type</label>
-                        <select class="form-select" 
-                                id="log_type-select"
-                                name="log_type" 
-                                data-param-type="log_type">
-
-                            <option value="" selected>-- Select a Log Type --</option>
-                            <option value="ACCESS">ACCESS</option>
-                            <option value="HDFS_DATAXCEIVER">HDFS_DATAXCEIVER</option>
-                            <option value="HDFS_NAMESYSTEM">HDFS_NAMESYSTEM</option>
-                        </select>
-                        <div class="invalid-feedback">A specific log type string is required.</div>
-                    </div>
-
+                    
                     <div id="source_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Source IP Address</h5>
                         <label for="source_ip-input" class="form-label">Source IP</label>
                         <input type="text" 
                             class="form-control" 
@@ -311,7 +215,6 @@
                     </div>
 
                     <div id="destination_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
-                        <h5>Destination IP Address</h5>
                         <label for="destination_ip-input" class="form-label">Destination IP</label>
                         <input type="text" 
                             class="form-control" 
@@ -323,9 +226,92 @@
                             A valid destination IP address is required.
                         </div>
                     </div>
+
+                    <div id="optional_container" class="col-md-12 js-param-wrapper collapse rounded-3 indicator">
+                        <h5>Optional parameters only used for access type logs</h5>
+                    </div>
+
+                    <div id="remote_name_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="remote_name-input" class="form-label">Remote name</label>
+                        <input type="text"
+                            class="form-control"
+                            id="remote_name-input"
+                            name="remote_name"
+                            placeholder="e.g., "
+                            data-param-type="remote_name">
+                        <div class="invalid-feedback">
+                            A Remote name is required.
+                        </div>
+                    </div>
+
+                    <div id="auth_user_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="auth_user-input" class="form-label">Auth user</label>
+                        <input type="text"
+                            class="form-control"
+                            id="auth_user-input"
+                            name="auth_user"
+                            placeholder="e.g., "
+                            data-param-type="auth_user">
+                        <div class="invalid-feedback">
+                            An auth user is required.
+                        </div>
+                    </div>
+
+                    <div id="resource_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="resource-input" class="form-label">Resource</label>
+                        <input type="text"
+                            class="form-control"
+                            id="resource-input"
+                            name="resource"
+                            placeholder="e.g., "
+                            data-param-type="resource">
+                        <div class="invalid-feedback">
+                            A resource is required.
+                        </div>
+                    </div>
+
+                    <div id="http_status_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="http_status-input" class="form-label">HTTP Status</label>
+                        <input type="number"
+                            class="form-control"
+                            id="http_status-input"
+                            name="http_status"
+                            placeholder="e.g., "
+                            data-param-type="http_status">
+                        <div class="invalid-feedback">
+                            A http_status is required.
+                        </div>
+                    </div>
+
+                    <div id="referrer_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="referrer-input" class="form-label">Referrer</label>
+                        <input type="text"
+                            class="form-control"
+                            id="referrer-input"
+                            name="referrer"
+                            placeholder="e.g., "
+                            data-param-type="referrer">
+                        <div class="invalid-feedback">
+                            A referrer is required.
+                        </div>
+                    </div>
+
+                    <div id="user_agent_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="user_agent-input" class="form-label">User agent</label>
+                        <input type="text"
+                            class="form-control"
+                            id="user_agent-input"
+                            name="user_agent"
+                            placeholder="e.g., "
+                            data-param-type="user_agent">
+                        <div class="invalid-feedback">
+                            A user agent is required.
+                        </div>
+                    </div>
+
                 </div>
 
-                <div id="no_params_container" class="js-param-wrapper collapse mb-4 p-3 alert alert-info">
+                <div id="no_params_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 alert alert-info">
                     No specific parameters are required for this query type.
                 </div>
 

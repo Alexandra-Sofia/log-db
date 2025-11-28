@@ -97,6 +97,7 @@ QUERY_DICTIONARY = {
             "block_id": "required",
             "size_bytes": "required",
 
+            "optional": "optional",
             "remote_name": "optional",
             "auth_user": "optional",
             "resource": "optional",
@@ -106,6 +107,10 @@ QUERY_DICTIONARY = {
         },
         "storedProcedure": "fn_insert_log"
     },
+    "15": {
+        "title": "Find all the user queries in descending order",
+        "storedProcedure": "get_user_query_log"
+    }
 }
 
 def hasQuery(request): 
