@@ -1,0 +1,1 @@
+This is the batch insertion implementation for the loading of the database that was dropped due to the usage of postgres copy.

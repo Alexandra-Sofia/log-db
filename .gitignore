@@ -1,0 +1,4 @@
+input-logfiles/*
+.logs/*
+**/__pycache__/
+.parsed/*

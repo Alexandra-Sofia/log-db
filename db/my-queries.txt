@@ -1,0 +1,151 @@
+--1. Find the total logs per type that were created within a specified time range and sort them in
+--a descending order. Please note that individual files may log actions of more than one type
+select at.name as type, count(*) as logs
+from log_entry le
+join action_type at
+on at.id = le.action_type_id
+where le.log_timestamp between '2005-06-18 20:03:13.000 +0300' and '2010-07-16 17:17:25.000 +0300'
+group by at.id
+order by logs desc
+
+--2. Find the total logs per day for a specific action type and time range.
+select le.log_timestamp::date as day, count(*) as total_logs
+from log_entry le
+join action_type at
+on le.action_type_id = at.id
+where at."name"  = 'GET' and le.log_timestamp between '2005-07-16 11:28:02.000 +0300' and '2010-07-16 17:17:25.000 +0300'
+group by day
+order by total_logs Desc
+
+
+--3. Find the most common log per source IP for a specific day.
+WITH ranked AS (
+    SELECT
+        le.source_ip,
+        at.name AS log_type,
+        COUNT(*) AS frequency,
+        RANK() OVER (
+            PARTITION BY le.source_ip
+            ORDER BY COUNT(*) DESC
+        ) AS rnk
+    FROM log_entry le
+    JOIN action_type at
+      ON le.action_type_id = at.id
+    WHERE le.log_timestamp::date = '2005-07-18'
+    GROUP BY le.source_ip, at.name
+)
+SELECT
+    source_ip,
+    log_type,
+    frequency
+FROM ranked
+WHERE rnk = 1
+ORDER BY frequency DESC;
+
+
+--4. Find the top-5 Block IDs with regards to total number of actions per day for a specific date
+--range (for types that Block ID is available)
+
+select le.block_id as block_id, le.log_timestamp::date as day, count(le.action_type_id) as total_actions
+from log_entry le
+WHERE (le.log_timestamp >= '2008-01-01'::date
+  AND le.log_timestamp <  '2008-11-11'::date)
+  and le.block_id is not NULL
+group by block_id, day
+order by total_actions desc
+limit 5
+
+--5. Find the referrers (if any) that have led to more than one resources.
+select lad.referrer as referrer , count(lad.resource) as resource_frequency
+from log_access_detail lad
+where lad.referrer is not null
+group by referrer
+having count(lad.resource) >1
+
+
+--6. Find the 2nd–most–common resource requested.
+select lad.resource, count(*) as frequency
+from log_access_detail lad
+group by lad.resource
+order by frequency desc
+offset 1
+limit 1
+
+--7. Find the access log (all fields) where the size is less than a specified number.
+select *
+from log_entry le
+join log_access_detail lad
+on le.id = lad.log_entry_id
+where le.size_bytes is not null
+and le.size_bytes < 300
+
+
+--8. Find the blocks that have been replicated the same day that they have also been served.
+--create view replicate
+
+select le.block_id--, string_agg(cast(le.log_timestamp::date as text), '||') as days --string_agg(at2.name, '||') as types, count(distinct at2.name) as numOfTypes,
+from log_entry le
+join action_type at2
+on le.action_type_id = at2.id
+and name in ('replicate', 'served')
+group by le.block_id, (le.log_timestamp::date)
+having count(distinct at2.name) > 1
+order by le.block_id desc
+
+
+--9. Find the blocks that have been replicated the same day and hour that they have also been
+--served.
+
+select le.block_id--, string_agg(cast(le.log_timestamp::date as text), '||') as days --string_agg(at2.name, '||') as types, count(distinct at2.name) as numOfTypes,
+from log_entry le
+join action_type at2
+on le.action_type_id = at2.id
+and name in ('replicate', 'served')
+group by le.block_id, concat(cast((le.log_timestamp::date) as text), CAST(EXTRACT(HOUR FROM le.log_timestamp) as text))
+having count(distinct at2.name) > 1
+order by le.block_id desc
+
+
+
+--10. Find access logs that specified a particular version of Firefox as their browser.
+select *
+from log_entry le
+join log_access_detail lad
+on le.id = lad.log_entry_id
+where lad.user_agent ILIKE '%Mozilla/6.0%';
+
+--11. Find IPs that have issued a particular HTTP method on a particular time range.
+select le.source_ip
+from log_entry le
+join log_type lt on lt.id = le.log_type_id
+join action_type at on at.id = le.action_type_id
+where lt.name = 'ACCESS' AND
+at.name in ('GET')
+and ( le.log_timestamp >= '2006-02-24 22:23:09.000 +0200'::timestamp
+  AND le.log_timestamp <  '2006-02-27 01:39:22.000 +0200'::timestamp)
+group by le.source_ip
+HAVING COUNT(DISTINCT at.name) = 1;
+
+--12. Find IPs that have issued two particular HTTP methods on a particular time range.
+select le.source_ip
+from log_entry le
+join log_type lt on lt.id = le.log_type_id
+join action_type at on at.id = le.action_type_id
+where lt.name = 'ACCESS' AND
+	at.name in ('GET', 'POST')
+	and le.log_timestamp >= '2000-02-01'::timestamp
+      AND le.log_timestamp <  '2015-01-01'::timestamp
+group by le.source_ip
+HAVING COUNT(DISTINCT at.name) = 2;
+
+--13. Find IPs that have issued any four distinct HTTP methods on a particular time range.
+select le.source_ip m, COUNT(DISTINCT at.name) as cnt, string_agg(distinct at.name, '|') as methods
+from log_entry le
+join log_type lt on lt.id = le.log_type_id
+join action_type at on at.id = le.action_type_id
+where lt.name = 'ACCESS'
+	and le.log_timestamp >= '2000-02-01'::timestamp
+      AND le.log_timestamp <  '2015-01-01'::timestamp
+group by le.source_ip
+HAVING COUNT(DISTINCT at.name) = 3
+order by cnt desc ;

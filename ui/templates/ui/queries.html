@@ -1,0 +1,422 @@
+{% extends "./base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center"> 
+    <div class="py-3">
+        <form id="query-form" method="POST" action="/askQuery" novalidate>
+            {% csrf_token %}
+
+            <div class="align-items-center p-3 bg-light rounded-3 shadow-sm">
+                <div class="row g-3">
+                    <label for="query-selector" class="form-label me-3 mb-0 text-muted fw-bold">Select a Query:</label>
+                    <div class="col-md-12">
+                        <select id="query-selector" name="query" 
+                            class="form-select" 
+                            required>
+                            <option value="" selected>-- Choose an option --</option>
+                            {% for key, query in queries.items %}
+                            <option value="{{key}}">{{key}} {{query.title}}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback">Please select a query</div>
+                    </div>
+                </div>
+            </div>
+            <br/>
+            <div id="dynamic-params-wrapper">
+                <div class="row g-3">
+
+                    <div id="log_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="log_type-select" class="form-label">Log Type</label>
+                        <select class="form-select" 
+                                id="log_type-select"
+                                name="log_type" 
+                                data-param-type="log_type">
+
+                            <option value="" selected>-- Select a Log Type --</option>
+                            <option value="ACCESS">ACCESS</option>
+                            <option value="HDFS_DATAXCEIVER">HDFS_DATAXCEIVER</option>
+                            <option value="HDFS_NAMESYSTEM">HDFS_NAMESYSTEM</option>
+                        </select>
+                        <div class="invalid-feedback">A specific log type string is required.</div>
+                    </div>
+
+                    <div id="action_type_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="action_type-select" class="form-label">Action Type</label>
+                        <select class="form-select" 
+                                id="action_type-select"
+                                name="action_type" 
+                                data-param-type="action_type">
+                            <option value="" selected>-- Select an Action Type --</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="CONNECT">CONNECT</option>
+                            <option value="HEAD">HEAD</option>
+                            <option value="PUT">PUT</option>
+                            <option value="OPTIONS">OPTIONS</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="TRACE">TRACE</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="receiving">receiving</option>
+                            <option value="received">received</option>
+                            <option value="served">served</option>
+                            <option value="update">update</option>
+                            
+                        </select>
+                        
+                        <div class="invalid-feedback">A specific action type is required for this query.</div>
+                    </div>
+
+                    <div id="action_type_2_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="action_type_2-select" class="form-label">Action Type</label>
+                        <select class="form-select"
+                                id="action_type_2-select"
+                                name="action_type_2"
+                                data-param-type="action_type_2">
+                            <option value="" selected>-- Select an Action Type --</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="CONNECT">CONNECT</option>
+                            <option value="HEAD">HEAD</option>
+                            <option value="PUT">PUT</option>
+                            <option value="OPTIONS">OPTIONS</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="TRACE">TRACE</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="receiving">receiving</option>
+                            <option value="received">received</option>
+                            <option value="served">served</option>
+                            <option value="update">update</option>
+
+                        </select>
+
+                        <div class="invalid-feedback">A specific action type is required for this query.</div>
+                    </div>
+
+                    <div id="time_range_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3 ">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="time_range-start" class="form-label">From Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="time_range-start" 
+                                    name="start_time"
+                                    data-param-type="time_range">
+                                <div class="invalid-feedback">Please provide the starting date and time.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="time_range-end" class="form-label">To Datetime</label>
+                                <input type="datetime-local" 
+                                    class="form-control" 
+                                    id="time_range-end" 
+                                    name="end_time"
+                                    data-param-type="time_range">
+                                <div class="invalid-feedback">Please provide the ending date and time.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="day_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="day-input" class="form-label">Select Day</label>
+                        <input type="date" 
+                            class="form-control" 
+                            id="day-input" 
+                            name="single_day"
+                            data-param-type="day">
+                        <div class="invalid-feedback">Please select a single day.</div>
+                    </div>
+
+                    <div id="dayRange_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="dayRange-start" class="form-label">From Date</label>
+                                <input type="date" 
+                                    class="form-control" 
+                                    id="dayRange-start" 
+                                    name="start_day"
+                                    data-param-type="dayRange">
+                                <div class="invalid-feedback">Please select the starting date.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="dayRange-end" class="form-label">To Date</label>
+                                <input type="date" 
+                                    class="form-control" 
+                                    id="dayRange-end" 
+                                    name="end_day"
+                                    data-param-type="dayRange">
+                                <div class="invalid-feedback">Please select the ending date.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="block_id_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="block_id-input" class="form-label">Block ID</label>
+                        <input type="text"
+                            class="form-control" 
+                            id="block_id-input" 
+                            name="block_id"
+                            placeholder="e.g., 501"
+                            data-param-type="block_id">
+                        <div class="invalid-feedback">
+                            A Block ID is required.
+                        </div>
+                    </div>
+
+                    <div id="version_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="version-input" class="form-label">Firefox version</label>
+                        <input type="text"
+                            class="form-control"
+                            id="version-input"
+                            name="version"
+                            placeholder="e.g., 6.0"
+                            data-param-type="version">
+                        <div class="invalid-feedback">
+                            A Mozilla Firefox version is required.
+                        </div>
+                    </div>
+
+                    <div id="size_bytes_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="size_bytes-input" class="form-label">Minimum Size (Bytes)</label>
+                        <input type="number" 
+                            class="form-control" 
+                            id="size_bytes-input" 
+                            name="size_bytes"
+                            placeholder="e.g., 1024"
+                            data-param-type="size_bytes">
+                        <div class="invalid-feedback">
+                            A minimum size in bytes (number) is required.
+                        </div>
+                    </div>
+
+                    <div id="timestamp_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="timestamp-input" class="form-label">Specific Date & Time</label>
+                        <input type="datetime-local" 
+                            class="form-control" 
+                            id="timestamp-input" 
+                            name="specific_timestamp"
+                            data-param-type="timestamp">
+                        <div class="invalid-feedback">
+                            Please select a specific date and time for the query.
+                        </div>
+                    </div>
+                    
+                    <div id="source_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="source_ip-input" class="form-label">Source IP</label>
+                        <input type="text" 
+                            class="form-control" 
+                            id="source_ip-input" 
+                            name="source_ip"
+                            placeholder="e.g., 192.168.1.10"
+                            data-param-type="source_ip">
+                        <div class="invalid-feedback">
+                            A valid source IP address is required.
+                        </div>
+                    </div>
+
+                    <div id="destination_ip_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="destination_ip-input" class="form-label">Destination IP</label>
+                        <input type="text" 
+                            class="form-control" 
+                            id="destination_ip-input" 
+                            name="destination_ip"
+                            placeholder="e.g., 8.8.8.8"
+                            data-param-type="destination_ip">
+                        <div class="invalid-feedback">
+                            A valid destination IP address is required.
+                        </div>
+                    </div>
+
+                    <div id="optional_container" class="col-md-12 js-param-wrapper collapse rounded-3 indicator">
+                        <h5>Optional parameters only used for access type logs</h5>
+                    </div>
+
+                    <div id="remote_name_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="remote_name-input" class="form-label">Remote name</label>
+                        <input type="text"
+                            class="form-control"
+                            id="remote_name-input"
+                            name="remote_name"
+                            placeholder="e.g., "
+                            data-param-type="remote_name">
+                        <div class="invalid-feedback">
+                            A Remote name is required.
+                        </div>
+                    </div>
+
+                    <div id="auth_user_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="auth_user-input" class="form-label">Auth user</label>
+                        <input type="text"
+                            class="form-control"
+                            id="auth_user-input"
+                            name="auth_user"
+                            placeholder="e.g., "
+                            data-param-type="auth_user">
+                        <div class="invalid-feedback">
+                            An auth user is required.
+                        </div>
+                    </div>
+
+                    <div id="resource_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="resource-input" class="form-label">Resource</label>
+                        <input type="text"
+                            class="form-control"
+                            id="resource-input"
+                            name="resource"
+                            placeholder="e.g., "
+                            data-param-type="resource">
+                        <div class="invalid-feedback">
+                            A resource is required.
+                        </div>
+                    </div>
+
+                    <div id="http_status_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="http_status-input" class="form-label">HTTP Status</label>
+                        <input type="number"
+                            class="form-control"
+                            id="http_status-input"
+                            name="http_status"
+                            placeholder="e.g., "
+                            data-param-type="http_status">
+                        <div class="invalid-feedback">
+                            A http_status is required.
+                        </div>
+                    </div>
+
+                    <div id="referrer_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="referrer-input" class="form-label">Referrer</label>
+                        <input type="text"
+                            class="form-control"
+                            id="referrer-input"
+                            name="referrer"
+                            placeholder="e.g., "
+                            data-param-type="referrer">
+                        <div class="invalid-feedback">
+                            A referrer is required.
+                        </div>
+                    </div>
+
+                    <div id="user_agent_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 rounded-3">
+                        <label for="user_agent-input" class="form-label">User agent</label>
+                        <input type="text"
+                            class="form-control"
+                            id="user_agent-input"
+                            name="user_agent"
+                            placeholder="e.g., "
+                            data-param-type="user_agent">
+                        <div class="invalid-feedback">
+                            A user agent is required.
+                        </div>
+                    </div>
+
+                </div>
+
+                <div id="no_params_container" class="col-md-6 js-param-wrapper collapse mb-4 p-3 alert alert-info">
+                    No specific parameters are required for this query type.
+                </div>
+
+            </div>
+
+            <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-lg">Run Query</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    const QUERY_PARAM_MAP = {};
+    {% for key, query in queries.items %}
+    QUERY_PARAM_MAP['{{key}}']= {};
+    {% for keyParam, param in query.htmlInputs.items %}
+    QUERY_PARAM_MAP['{{key}}']['{{keyParam}}']= '{{param}}';
+    {% endfor %}
+    {% endfor %}
+
+    const $selector = $('#query-selector');
+    const $form = $('#query-form');
+    const $allContainers = $('.js-param-wrapper');
+    const $allGroupedInputs = $form.find('[data-param-type]');
+
+    function updateForm() {
+        $form.removeClass('was-validated');
+
+        const selectedKey = $selector.val();
+        const requiredParams = QUERY_PARAM_MAP[selectedKey];
+
+        $allContainers.removeClass('show');
+        $allGroupedInputs.removeAttr('required').val('').prop('disabled', true);
+
+        if (requiredParams) {
+            paramKeys = Object.keys(requiredParams);
+            if (paramKeys.length === 0) {
+                $('#no_params_container').collapse('show');
+            } else {
+                paramKeys.forEach(paramTypeKey => {
+                    const containerId = `#${paramTypeKey}_container`;
+                    $(containerId).collapse('show');
+                    $form.find(`[data-param-type="${paramTypeKey}"]`).prop('disabled', false);
+                    if(requiredParams[paramTypeKey]==='required')
+                        $form.find(`[data-param-type="${paramTypeKey}"]`).attr('required', 'required');
+                    else
+                        $(containerId).addClass('input-optional');
+                });
+            }
+        }
+    }
+    $selector.on('change', updateForm);
+    updateForm();
+
+    const $rangeInputs = $form.find('[data-param-type="time_range"], [data-param-type="dayRange"]');
+
+    function validateRangeFields() {
+        let isValid = true;
+
+        const $startTime = $('#time_range-start');
+        const $endTime = $('#time_range-end');
+        if ($startTime.val() && $endTime.val()) {
+            const startVal = new Date($startTime.val());
+            const endVal = new Date($endTime.val());
+            if (startVal >= endVal) {
+                $startTime.addClass('is-invalid');
+                $endTime.addClass('is-invalid');
+                isValid = false;
+            } else {
+                $startTime.removeClass('is-invalid');
+                $endTime.removeClass('is-invalid');
+            }
+        }
+
+        const $startDay = $('#dayRange-start');
+        const $endDay = $('#dayRange-end');
+        if ($startDay.val() && $endDay.val()) {
+            const startVal = new Date($startDay.val());
+            const endVal = new Date($endDay.val());
+            if (startVal > endVal) {
+                $startDay.addClass('is-invalid');
+                $endDay.addClass('is-invalid');
+                isValid = false;
+            } else {
+                $startDay.removeClass('is-invalid');
+                $endDay.removeClass('is-invalid');
+            }
+        }
+        return isValid;
+    }
+
+    $rangeInputs.on('change input', validateRangeFields);
+
+    $form.on('submit', function(event) {
+        const isRangeValid = validateRangeFields();
+        if (this.checkValidity() === false || isRangeValid === false) {
+            event.preventDefault();
+            event.stopPropagation();
+            $(this).addClass('was-validated');
+        }
+    });
+});
+</script>
+{% endblock scripts %}
