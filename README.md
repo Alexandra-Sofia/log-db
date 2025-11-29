@@ -74,7 +74,14 @@ The schema is described thoroughly in a separate [README.md](./db/README.md).
 
 ---
 
-## 4. Parsing Architecture
+## 4. Ingestion Workflow
+
+### A. Parse logs
+Executed inside the `ingest` container:
+
+```
+python parse.py
+```
 
 The parser runs **3 separate worker processes** in parallel:
 
@@ -90,7 +97,7 @@ When all workers complete, the parent process merges outputs into final CSVs.
 
 Final CSV output includes:
 
-### log_entry.csv
+#### log_entry.csv
 ```
 id
 log_type_id
@@ -102,7 +109,7 @@ block_id
 size_bytes
 ```
 
-### log_access_detail.csv
+#### log_access_detail.csv
 ```
 log_entry_id
 remote_name
@@ -113,27 +120,15 @@ referrer
 user_agent
 ```
 
-### action_type.csv
+#### action_type.csv
 Deterministic UUIDs guarantee stable foreign keys.
 
-### log_type.csv
+#### log_type.csv
 Static from enum:
 - ACCESS
 - HDFS_DATAXCEIVER
 - HDFS_NAMESYSTEM
 
----
-
-## 5. Ingestion Workflow
-
-### A. Parse logs
-Executed inside the `ingest` container:
-
-```
-python parse.py
-```
-
-Produces CSVs in `parsed/`.
 
 ### B. Load CSVs into PostgreSQL
 
@@ -154,9 +149,36 @@ COPY log_access_detail FROM 'log_access_detail.csv' CSV HEADER;
 #### 2. Batch inserts (archived)
 Uses psycopg2 `execute_values` with 100k batches.
 
+Example console output from the execution of the ingest step:
+```commandline
+ingest-1        | 2025-11-28 21:28:08.775 | Ingest step deployment: START.                                                                                                                                                          
+ingest-1        | 2025-11-28 21:28:08.781 Waiting for PostgreSQL to become ready...
+ingest-1        | 2025-11-28 21:28:08.783 Host:     postgres
+ingest-1        | 2025-11-28 21:28:08.784 Port:     5432                                                                                                                                                                            
+ingest-1        | 2025-11-28 21:28:08.786 User:     admin                                                                                                                                                                           
+ingest-1        | 2025-11-28 21:28:08.788 Database: logdb                                                                                                                                                                           
+ingest-1        |                                                                                                                                                                                                                   
+ingest-1        | 2025-11-28 21:28:08.843 PostgreSQL is ready!                                                                                                                                                                      
+ingest-1        | 2025-11-28 21:28:08.898 | Starting workers...
+ingest-1        | 2025-11-28 21:29:25.612 | All parsers completed.
+ingest-1        | 2025-11-28 21:29:39.992 | All final CSVs created successfully.
+ingest-1        | 2025-11-28 21:29:40.000 | DEBUG: CSV done
+ingest-1        | 2025-11-28 21:29:40.219 | Connecting to PostgreSQL...                                                                                                                                                             
+ingest-1        | 2025-11-28 21:29:40.227 | Truncating all target tables...
+ingest-1        | 2025-11-28 21:29:40.302 | Truncate complete.                                                                                                                                                                      
+ingest-1        | 
+ingest-1        | 2025-11-28 21:29:40.302 | COPY → log_type (id, name) from ./parsed/log_type.csv                                                                                                                                   
+ingest-1        | 2025-11-28 21:29:40.304 | COPY → action_type (id, name) from ./parsed/action_type.csv                                                                                                                             
+ingest-1        | 2025-11-28 21:29:40.306 | COPY → log_entry (id, log_type_id, action_type_id, log_timestamp, source_ip, dest_ip, block_id, size_bytes) from ./parsed/log_entry.csv                                                 
+ingest-1        | 2025-11-28 21:30:55.964 | COPY → log_access_detail (log_entry_id, remote_name, auth_user, resource, http_status, referrer, user_agent) from ./parsed/log_access_detail.csv                                        
+ingest-1        | 2025-11-28 21:30:57.277 | == DONE ==
+ingest-1        | 2025-11-28 21:30:57.277 | All tables loaded successfully.
+ingest-1        | 2025-11-28 21:30:57.344 | Ingest step deployment: END.                                                                                                                                                            
+ingest-1 exited with code 0
+```
 ---
 
-## 6. Django webapp
+## 5. Django webapp
 
 The app follows Django’s standard project layout and keeps to the default boilerplate wherever possible.
 The Web UI supports:
@@ -182,7 +204,7 @@ The Web UI supports:
 - For every query executed by the UI, a new row is inserted in the user_query_log table.
 
 ---
-## 7. Docker Compose Usage
+## 6. Docker Compose Usage
 
 All the necessary services for the 
 
@@ -198,7 +220,7 @@ Services:
 
 ---
 
-## 8. Development notes
+## 7. Development notes
 
 ### Deployment
 - The django container occasionally fails due to an inconsistent and hard to replicate bug. In this case docker compose needs to be restarted and it works successfully.
@@ -215,13 +237,13 @@ Services:
 
 ---
 
-## 9. License
+## 8. License
 
 Internal academic project. No license.
 
 ---
 
-## 10. Author
+## 9. Author
 
 PostgresSQL Schema Design, LogDB ingestion & parsing engine, Django web UI
 developed by Sofia, Alexandra 
