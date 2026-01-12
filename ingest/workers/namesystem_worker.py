@@ -6,7 +6,7 @@ from timestamps import ts_hdfs_compact
 from ids import load_log_type_ids, deterministic_action_type_id
 from writers import write_entry
 from config import ENTRY_FIELDS
-from util import LogType
+from util import LogType, tiny_logger
 
 NAMESYS_UPDATE_REGEX = re.compile(
     r'''
@@ -57,16 +57,21 @@ def parse_namesystem_worker(
     log_type_ids = load_log_type_ids()
     action_type_names: Set[str] = set()
 
+    total_lines = 0
+    accepted_lines = 0
+
     with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv:
         writer_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
         writer_entry.writeheader()
 
         with open(input_path, encoding="utf-8") as infile:
             for raw_line in infile:
+                total_lines += 1
                 line = raw_line.rstrip("\n")
 
                 match_update = NAMESYS_UPDATE_REGEX.match(line)
                 if match_update:
+                    accepted_lines += 1
                     add_update(
                         writer_entry,
                         match_update.groupdict(),
@@ -77,12 +82,17 @@ def parse_namesystem_worker(
 
                 match_repl = NAMESYS_ASK_REPLICATE_REGEX.match(line)
                 if match_repl:
+                    accepted_lines += 1
                     add_replicate(
                         writer_entry,
                         match_repl.groupdict(),
                         log_type_ids,
                         action_type_names,
                     )
+
+    tiny_logger(
+        f"NAMESYSTEM parsed {accepted_lines}/{total_lines} lines"
+    )
 
     write_action_types(tmp_entry_path, action_type_names)
 
