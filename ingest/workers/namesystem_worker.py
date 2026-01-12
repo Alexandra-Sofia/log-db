@@ -9,22 +9,23 @@ from config import ENTRY_FIELDS
 from util import LogType
 
 NAMESYS_UPDATE_REGEX = re.compile(
-    r'''
+    r"""
     ^(?P<date>\d{6})\s+
     (?P<time>\d{6})\s+
     (?P<tid>\d+)\s+
     INFO\s+dfs\.FSNamesystem:\s+BLOCK\*\s+
     NameSystem\.\w+:\s+
-    blockMap updated:\s+
+    blockMap\s+updated:\s+
     (?P<ip>[0-9.]+):\d+.*?
     blk_(?P<block>-?\d+)
     (?:\s+size\s+(?P<size>\d+))?
-    $''',
+    \s*$
+    """,
     re.VERBOSE,
 )
 
 NAMESYS_ASK_REPLICATE_REGEX = re.compile(
-    r'''
+    r"""
     ^(?P<date>\d{6})\s+
     (?P<time>\d{6})\s+
     (?P<tid>\d+)\s+
@@ -34,7 +35,8 @@ NAMESYS_ASK_REPLICATE_REGEX = re.compile(
     blk_(?P<block>-?\d+)
     \s+to\s+datanode\(s\)\s+
     (?P<dest_list>(?:[0-9.]+:\d+\s*)+)
-    $''',
+    \s*$
+    """,
     re.VERBOSE,
 )
 
@@ -63,7 +65,7 @@ def parse_namesystem_worker(
 
         with open(input_path, encoding="utf-8") as infile:
             for raw_line in infile:
-                line = raw_line.rstrip("\n")
+                line = raw_line.strip()
 
                 match_update = NAMESYS_UPDATE_REGEX.match(line)
                 if match_update:
