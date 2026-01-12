@@ -6,7 +6,7 @@ from timestamps import ts_apache
 from writers import write_entry
 from ids import load_log_type_ids, deterministic_action_type_id
 from config import ENTRY_FIELDS, ACCESS_DETAIL_FIELDS
-from util import LogType
+from util import LogType, tiny_logger
 
 ACCESS_REGEX = re.compile(
     r'(?P<ip>\S+)\s+'
@@ -29,11 +29,6 @@ def parse_access_worker(
     """
     Parse Apache ACCESS logs and generate temporary CSV output.
 
-    Each matched line yields:
-      • one log_entry row
-      • one log_access_detail row
-      • one unique action_type entry (HTTP method)
-
     :param input_path: Path to the raw ACCESS log file.
     :param tmp_entry_path: Output CSV path for log_entry rows.
     :param tmp_detail_path: Output CSV path for log_access_detail rows.
@@ -41,6 +36,9 @@ def parse_access_worker(
     """
     log_type_ids = load_log_type_ids()
     action_type_names: Set[str] = set()
+
+    total_lines = 0
+    accepted_lines = 0
 
     with (
         open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv,
@@ -54,11 +52,14 @@ def parse_access_worker(
 
         with open(input_path, encoding="utf-8") as infile:
             for raw_line in infile:
+                total_lines += 1
                 line = raw_line.rstrip("\n")
+
                 match = ACCESS_REGEX.match(line)
                 if not match:
                     continue
 
+                accepted_lines += 1
                 fields: Dict[str, Any] = match.groupdict()
                 timestamp = ts_apache(fields["timestamp"])
 
@@ -93,6 +94,10 @@ def parse_access_worker(
                     ),
                     "user_agent": fields["agent"],
                 })
+
+    tiny_logger(
+        f"ACCESS parsed {accepted_lines}/{total_lines} lines"
+    )
 
     write_action_types(tmp_detail_path, action_type_names)
 

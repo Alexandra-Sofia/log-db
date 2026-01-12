@@ -6,7 +6,7 @@ from timestamps import ts_hdfs_compact
 from ids import load_log_type_ids, deterministic_action_type_id
 from writers import write_entry
 from config import ENTRY_FIELDS
-from util import LogType
+from util import LogType, tiny_logger
 
 DATAX_REGEX = re.compile(
     r'''
@@ -47,17 +47,23 @@ def parse_dataxceiver_worker(input_path: str, tmp_entry_path: str) -> None:
     log_type_ids = load_log_type_ids()
     action_type_names: Set[str] = set()
 
+    total_lines = 0
+    accepted_lines = 0
+
     with open(tmp_entry_path, "w", newline="", encoding="utf-8") as entry_csv:
         writer_entry = csv.DictWriter(entry_csv, fieldnames=ENTRY_FIELDS)
         writer_entry.writeheader()
 
         with open(input_path, encoding="utf-8") as infile:
             for raw_line in infile:
+                total_lines += 1
                 line = raw_line.rstrip("\n")
+
                 match = DATAX_REGEX.match(line)
                 if not match:
                     continue
 
+                accepted_lines += 1
                 fields: Dict[str, Any] = match.groupdict()
                 timestamp = ts_hdfs_compact(fields["date"], fields["time"])
 
@@ -90,6 +96,10 @@ def parse_dataxceiver_worker(input_path: str, tmp_entry_path: str) -> None:
                         action_type_names,
                     )
 
+    tiny_logger(
+        f"DATAXCEIVER parsed {accepted_lines}/{total_lines} lines"
+    )
+
     write_action_types(tmp_entry_path, action_type_names)
 
 
@@ -100,16 +110,6 @@ def add_receiving(
     log_type_ids: Dict[LogType, int],
     action_type_names: Set[str],
 ) -> None:
-    """
-    Write a ``receiving`` log_entry row.
-
-    :param writer_entry: CSV DictWriter for log_entry rows.
-    :param fields: Matched regex field dictionary.
-    :param timestamp: Parsed timestamp object.
-    :param log_type_ids: Mapping of LogType to numeric IDs.
-    :param action_type_names: Set collecting unique action names.
-    :return: None
-    """
     action = "receiving"
     action_type_names.add(action)
 
@@ -134,16 +134,6 @@ def add_received(
     log_type_ids: Dict[LogType, int],
     action_type_names: Set[str],
 ) -> None:
-    """
-    Write a ``received`` log_entry row.
-
-    :param writer_entry: CSV DictWriter for log_entry rows.
-    :param fields: Matched regex field dictionary.
-    :param timestamp: Parsed timestamp object.
-    :param log_type_ids: Mapping of LogType to numeric IDs.
-    :param action_type_names: Set collecting unique action names.
-    :return: None
-    """
     action = "received"
     action_type_names.add(action)
 
@@ -170,16 +160,6 @@ def add_served(
     log_type_ids: Dict[LogType, int],
     action_type_names: Set[str],
 ) -> None:
-    """
-    Write a ``served`` log_entry row.
-
-    :param writer_entry: CSV DictWriter for log_entry rows.
-    :param fields: Matched regex field dictionary.
-    :param timestamp: Parsed timestamp object.
-    :param log_type_ids: Mapping of LogType to numeric IDs.
-    :param action_type_names: Set collecting unique action names.
-    :return: None
-    """
     action = "served"
     action_type_names.add(action)
 
@@ -201,13 +181,6 @@ def write_action_types(
     tmp_entry_path: str,
     action_type_names: Set[str],
 ) -> None:
-    """
-    Write the unique DataXceiver action types to the matching temporary CSV.
-
-    :param tmp_entry_path: Path of the log_entry CSV used to derive output path.
-    :param action_type_names: Set of unique action names.
-    :return: None
-    """
     action_path = tmp_entry_path.replace("log_entry", "action_types")
 
     with open(action_path, "w", newline="", encoding="utf-8") as outfile:
